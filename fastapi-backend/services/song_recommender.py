@@ -267,16 +267,22 @@ class SongRecommender:
         conn = self._get_connection()
         cursor = conn.cursor()
         
-        # Query similar songs using pgvector
+        # Query similar songs using pgvector with duplicate filtering
         cursor.execute("""
-            SELECT s.id, s.name, s.artists, s.genre, s.year,
-                   1 - (sv.embedding <=> (SELECT embedding FROM song_vectors WHERE spotify_id = %s)) as similarity
-            FROM song_vectors sv
-            JOIN songs s ON sv.spotify_id = s.id
-            WHERE sv.spotify_id != %s
-            ORDER BY sv.embedding <=> (SELECT embedding FROM song_vectors WHERE spotify_id = %s)
+            SELECT id, name, artists, genre, year, similarity FROM (
+                SELECT DISTINCT ON (LOWER(SPLIT_PART(s.name, ' - ', 1)))
+                       s.id, s.name, s.artists, s.genre, s.year,
+                       1 - (sv.embedding <=> (SELECT embedding FROM song_vectors WHERE spotify_id = %s)) as similarity,
+                       sv.embedding <=> (SELECT embedding FROM song_vectors WHERE spotify_id = %s) as distance
+                FROM song_vectors sv
+                JOIN songs s ON sv.spotify_id = s.id
+                WHERE sv.spotify_id != %s
+                ORDER BY LOWER(SPLIT_PART(s.name, ' - ', 1)),
+                         sv.embedding <=> (SELECT embedding FROM song_vectors WHERE spotify_id = %s)
+            ) sub
+            ORDER BY distance
             LIMIT %s;
-        """, (spotify_id, spotify_id, spotify_id, n_recommendations))
+        """, (spotify_id, spotify_id, spotify_id, spotify_id, n_recommendations))
         
         rows = cursor.fetchall()
         cursor.close()
@@ -418,16 +424,22 @@ class SongRecommender:
         cursor.execute("SET ivfflat.probes = 50")
         
         cursor.execute(f"""
-            SELECT s.id, s.name, s.artists, s.genre, s.year, s.popularity,
-                   1 - (sv.embedding <=> %s::vector) as similarity
-            FROM song_vectors sv
-            JOIN songs s ON sv.spotify_id = s.id
-            WHERE sv.spotify_id NOT IN ({placeholders_str})
-              AND s.year IS NOT NULL
-              AND s.year <= %s
-            ORDER BY sv.embedding <=> %s::vector
+            SELECT id, name, artists, genre, year, popularity, similarity FROM (
+                SELECT DISTINCT ON (LOWER(SPLIT_PART(s.name, ' - ', 1)))
+                       s.id, s.name, s.artists, s.genre, s.year, s.popularity,
+                       1 - (sv.embedding <=> %s::vector) as similarity,
+                       sv.embedding <=> %s::vector as distance
+                FROM song_vectors sv
+                JOIN songs s ON sv.spotify_id = s.id
+                WHERE sv.spotify_id NOT IN ({placeholders_str})
+                  AND s.year IS NOT NULL
+                  AND s.year <= %s
+                ORDER BY LOWER(SPLIT_PART(s.name, ' - ', 1)),
+                         sv.embedding <=> %s::vector
+            ) sub
+            ORDER BY distance
             LIMIT %s;
-        """, [embedding_str] + liked_ids + [max_year, embedding_str, fetch_limit])
+        """, [embedding_str, embedding_str] + liked_ids + [max_year, embedding_str, fetch_limit])
         
         rows = cursor.fetchall()
         for row in rows:

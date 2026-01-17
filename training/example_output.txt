@@ -1,0 +1,53 @@
+============================================================
+QUERY SONG
+============================================================
+  Glue Song
+  ['beabadoobee']
+  Year: 2023, Genre: Pop
+
+============================================================
+FULL MODEL RECOMMENDATIONS (year+genre weighted)
+============================================================
+  1. Loverboy
+     ['A-Wall']
+     Year: 2019, Genre: Pop, Similarity: 98.9%
+
+  2. Secret Life
+     ['Sarah Klang']
+     Year: 2019, Genre: Pop, Similarity: 98.5%
+
+  3. My Only Wish (feat. Christopher)
+     ['Jubël', 'Christopher']
+     Year: 2022, Genre: Pop, Similarity: 98.5%
+
+  4. The Modern Western World
+     ['Vansire']
+     Year: 2022, Genre: Pop, Similarity: 98.3%
+
+  5. Imposter Syndrome (Audiotree Live Version)
+     ['Sidney Gish']
+     Year: 2019, Genre: Pop, Similarity: 97.9%
+
+============================================================
+AUDIO-ONLY RECOMMENDATIONS (masked embedding)
+============================================================
+  1. Five Foot Two, Eyes of Blue
+     ['Gene Austin']
+     Year: 2009, Genre: Jazz, Similarity: 92.7%
+
+  2. Blue Again
+     ['Marion Harris']
+     Year: 2006, Genre: Jazz, Similarity: 92.7%
+
+  3. Wreck Of The Old 97
+     ['Vernon Dalhart']
+     Year: 2008, Genre: Jazz, Similarity: 92.5%
+
+  4. I Must Have That Man
+     ['Annette Hanshaw']
+     Year: 2011, Genre: Jazz, Similarity: 92.1%
+
+  5. Smoke Gets in Your Eyes - Rerecorded
+     ['The Platters']
+     Year: 2004, Genre: Pop, Similarity: 91.9%
+

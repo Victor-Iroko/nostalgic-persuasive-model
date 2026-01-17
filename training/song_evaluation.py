@@ -168,26 +168,32 @@ def evaluate_nostalgia_metrics(
         if (i + 1) % 20 == 0:
             print(f"  Processing query {i + 1}/{n_queries}...")
         
-        # Query similar songs with all evaluation fields
+        # Query similar songs with all evaluation fields (with duplicate filtering)
         cursor.execute(
             """
-            SELECT 
-                s.year,
-                s.popularity,
-                s.duration_ms,
-                s.valence,
-                s.energy,
-                s.danceability,
-                s.artists,
-                s.genre
-            FROM song_vectors sv
-            JOIN songs s ON sv.spotify_id = s.id
-            WHERE sv.spotify_id != %s
-              AND s.year IS NOT NULL
-            ORDER BY sv.embedding <=> (SELECT embedding FROM song_vectors WHERE spotify_id = %s)
+            SELECT year, popularity, duration_ms, valence, energy, danceability, artists, genre
+            FROM (
+                SELECT DISTINCT ON (LOWER(SPLIT_PART(s.name, ' - ', 1)))
+                    s.year,
+                    s.popularity,
+                    s.duration_ms,
+                    s.valence,
+                    s.energy,
+                    s.danceability,
+                    s.artists,
+                    s.genre,
+                    sv.embedding <=> (SELECT embedding FROM song_vectors WHERE spotify_id = %s) as distance
+                FROM song_vectors sv
+                JOIN songs s ON sv.spotify_id = s.id
+                WHERE sv.spotify_id != %s
+                  AND s.year IS NOT NULL
+                ORDER BY LOWER(SPLIT_PART(s.name, ' - ', 1)), 
+                         sv.embedding <=> (SELECT embedding FROM song_vectors WHERE spotify_id = %s)
+            ) sub
+            ORDER BY distance
             LIMIT %s;
             """,
-            (spotify_id, spotify_id, n_recommendations),
+            (spotify_id, spotify_id, spotify_id, n_recommendations),
         )
         recommendations = cursor.fetchall()
         

@@ -1,0 +1,45 @@
+Total Database Size: 2383 MB
+
+Table Sizes (Top 15):
+Table                          Total        Data         Indexes     
+------------------------------------------------------------------
+song_vectors                   1608 MB      686 MB       922 MB      
+songs                          753 MB       665 MB       88 MB       
+movies                         13 MB        8928 kB      4720 kB     
+daily_habit_logs               112 kB       16 kB        96 kB       
+content_feedback               80 kB        8192 bytes   72 kB       
+session                        64 kB        8192 bytes   56 kB       
+user_preferences               64 kB        8192 bytes   56 kB       
+account                        48 kB        8192 bytes   40 kB       
+user                           48 kB        8192 bytes   40 kB       
+verification                   24 kB        0 bytes      24 kB       
+
+Song Vectors Table Details:
+  Row Count: 550,619
+  Total Size: 1608 MB
+  Data Size: 686 MB
+  Embedding Size per Row: 520 bytes
+
+==================================================================
+LYRICS COLUMN ANALYSIS
+==================================================================
+
+Song Count:
+  Total Songs: 550,619
+  With Lyrics: 550,619
+  Without Lyrics: 0
+
+Lyrics Size Statistics:
+  Avg Lyrics Length: 1,269 characters
+  Avg Lyrics Size: 1,059 bytes
+  Min Lyrics Length: 2 characters
+  Max Lyrics Length: 27,338 characters
+
+Potential Savings:
+  Total Lyrics Size: 583,361,150 bytes
+  Total Lyrics Size: 556.34 MB
+
+Comparison:
+  Current Songs Table Data Size: 665.29 MB
+  Estimated Savings: ~83.6% of songs table data
+  New Songs Table Size (estimate): ~108.95 MB

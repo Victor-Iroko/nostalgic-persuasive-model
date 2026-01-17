@@ -1,0 +1,6 @@
+SONG DATASET DUPLICATE ANALYSIS
+================================
+Total songs:                    550,619
+Exact duplicates (extra rows):  73,268 (13.3%)
+Variant tracks (remix/live/etc):67,968 (12.3%)
+Re-releases (diff years):       30,161

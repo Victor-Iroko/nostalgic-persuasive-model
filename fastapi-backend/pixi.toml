@@ -1,0 +1,26 @@
+[workspace]
+authors = ["Victor-Iroko <irokovictor7@gmail.com>"]
+channels = ["conda-forge"]
+name = "fastapi-backend"
+platforms = ["win-64"]
+version = "0.1.0"
+
+[tasks]
+start = "uvicorn main:app --host 0.0.0.0 --port 8000"
+dev = "uvicorn main:app --reload"
+
+
+[dependencies]
+numpy = ">=1.26.4,<2"
+pandas = ">=2.3.3,<3"
+fastapi = ">=0.128.0,<0.129"
+lightfm = ">=1.17,<2"
+uvicorn = ">=0.40.0,<0.41"
+scikit-learn = ">=1.8.0,<2"
+transformers = ">=4.57.3,<5"
+pytorch = ">=2.9.1,<3"
+psycopg2 = ">=2.9.11,<3"
+huggingface_hub = ">=0.26.0"
+
+[pypi-dependencies]
+mab2rec = ">=1.3.1, <2"

@@ -285,6 +285,20 @@ class HierarchicalBandit:
 
     def _load_or_create_global(self) -> LinUCBBandit:
         """Load global model from disk or create new one."""
+        repo_id = os.getenv("HF_REPO_ID")
+            
+        if repo_id:
+            print(f"Loading global bandit from Hugging Face Hub: {repo_id}...")
+            try:
+                from huggingface_hub import hf_hub_download
+                model_path = hf_hub_download(repo_id=repo_id, filename="bandit/global_bandit.joblib")
+                bandit = LinUCBBandit.load(Path(model_path))
+                print(f"   Loaded global bandit from HF Hub with {bandit.n_updates} updates (full model)")
+                return bandit
+            except Exception as e:
+                print(f"⚠ Failed to load global bandit from HF Hub: {e}")
+                print("Falling back to local models...")
+
         # Try joblib first (full model)
         joblib_path = self.models_dir / "global_bandit.joblib"
         if joblib_path.exists():

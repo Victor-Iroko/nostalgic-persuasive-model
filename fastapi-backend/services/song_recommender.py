@@ -81,6 +81,9 @@ class SongRecommender:
         self.models_dir = models_dir or MODELS_DIR
         self.database_url = database_url or DATABASE_URL
         
+        # Database connection (lazy initialization)
+        self._conn: Optional[psycopg2.extensions.connection] = None
+        
         # Load transformers
         repo_id = os.getenv("HF_REPO_ID")
         
@@ -125,7 +128,8 @@ class SongRecommender:
         )
         
         # Database connection (lazy initialization)
-        self._conn: Optional[psycopg2.extensions.connection] = None
+        if self._conn is None:
+             self._conn: Optional[psycopg2.extensions.connection] = None
         
         print("Song recommender initialized!")
     
@@ -325,7 +329,7 @@ class SongRecommender:
         
         if not liked_items:
             # Fallback for empty history
-            return self._get_random_recommendations(n_recommendations)
+            return self._get_random_recommendations(n_recommendations, min_years_old=min_years_old)
 
         liked_ids = [item["spotify_id"] for item in liked_items]
         
@@ -509,13 +513,19 @@ class SongRecommender:
         # Return only requested number (we fetched extra for filtering buffer)
         return pd.DataFrame(results[:n_recommendations])
 
-    def _get_random_recommendations(self, n: int) -> pd.DataFrame:
+    def _get_random_recommendations(self, n: int, min_years_old: int = 10) -> pd.DataFrame:
         """Fallback for cold start."""
         conn = self._get_connection()
         cursor = conn.cursor()
+        
+        # Calculate max year
+        import datetime
+        max_year = datetime.datetime.now().year - min_years_old
+        
         cursor.execute(f"""
             SELECT id, name, artists, genre, year 
             FROM songs 
+            WHERE year <= {max_year}
             ORDER BY RANDOM() 
             LIMIT {n}
         """)
@@ -526,13 +536,14 @@ class SongRecommender:
             "genre": r[3], "year": r[4], "similarity": 0.0, "strategy": "random"
         } for r in rows])
     
-    def search_songs(self, query: str, limit: int = 10) -> pd.DataFrame:
+    def search_songs(self, query: str, limit: int = 10, min_years_old: int = 0) -> pd.DataFrame:
         """
         Search for songs by name or artist.
         
         Args:
             query: Search query (case-insensitive)
             limit: Maximum number of results
+            min_years_old: Minimum age of song in years
             
         Returns:
             DataFrame with matching songs
@@ -540,12 +551,18 @@ class SongRecommender:
         conn = self._get_connection()
         cursor = conn.cursor()
         
+        # Calculate max year
+        import datetime
+        current_year = datetime.date.today().year
+        max_year = current_year - min_years_old
+        
         cursor.execute("""
             SELECT id, name, artists, genre, year
             FROM songs
-            WHERE LOWER(name::text) LIKE %s OR LOWER(artists::text) LIKE %s
+            WHERE (LOWER(name::text) LIKE %s OR LOWER(artists::text) LIKE %s)
+            AND year <= %s
             LIMIT %s;
-        """, (f"%{query.lower()}%", f"%{query.lower()}%", limit))
+        """, (f"%{query.lower()}%", f"%{query.lower()}%", max_year, limit))
         
         rows = cursor.fetchall()
         cursor.close()

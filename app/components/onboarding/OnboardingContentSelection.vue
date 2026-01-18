@@ -131,7 +131,7 @@ async function performSearch(query: string) {
         yearStart: props.periodStart,
         yearEnd: props.periodEnd,
         search: query,
-        limit: 10,
+        limit: 50,
       },
     })
     searchResults.value = response.items

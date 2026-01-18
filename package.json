@@ -21,7 +21,8 @@
     "format": "prettier --check .",
     "format:fix": "prettier --write .",
     "prepare": "husky",
-    "dev:all": "concurrently -k -n \"APP,DB,STUDIO\" -c \"blue,green,magenta\" \"bun run dev\" \"docker compose up\" \"bun run db:studio\""
+    "dev:all": "concurrently -k -n \"APP,DB,STUDIO\" -c \"blue,green,magenta\" \"bun run dev\" \"docker compose up\" \"bun run db:studio\"",
+    "setup:models": "pixi run python scripts/download_models.py"
   },
   "dependencies": {
     "@nuxt/eslint": "1.12.1",

@@ -65,6 +65,7 @@ async def recommend_songs(
             liked_items=liked_items,
             n_recommendations=request.n_recommendations,
             exclude_liked=request.exclude_liked,
+            min_years_old=10,
         )
 
         if recommendations_df.empty:
@@ -134,6 +135,7 @@ async def recommend_songs_by_id(
         recommendations_df = recommender.recommend_by_id(
             spotify_id=request.spotify_id,
             n_recommendations=request.n_recommendations,
+            min_years_old=10,
         )
 
         recommendations: list[SongRecommendation] = []
@@ -212,7 +214,8 @@ async def search_songs(
 ) -> SongSearchResponse:
     """Search for songs by name or artist."""
     try:
-        results_df = recommender.search_songs(request.query, limit=request.limit)
+        # Enforce 10-year age filter for nostalgic onboarding
+        results_df = recommender.search_songs(request.query, limit=request.limit, min_years_old=10)
 
         results: list[SongInfo] = []
         for _, row in results_df.iterrows():

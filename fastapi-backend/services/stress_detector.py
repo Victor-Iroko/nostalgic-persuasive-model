@@ -21,9 +21,17 @@ class StressDetector:
         Args:
             model_path: Path to the directory containing the model files.
         """
+        import os
+        repo_id = os.getenv("HF_REPO_ID")
         self.model_path = Path(model_path)
-
-        if self.model_path.exists():
+        
+        if repo_id:
+             print(f"   Loading tokenizer from HF Hub: {repo_id} (subfolder=stress_detection_mental_roberta)...")
+             self.tokenizer = AutoTokenizer.from_pretrained(repo_id, subfolder="stress_detection_mental_roberta")
+             
+             print(f"   Loading model from HF Hub: {repo_id} (subfolder=stress_detection_mental_roberta)...")
+             self.model = AutoModelForSequenceClassification.from_pretrained(repo_id, subfolder="stress_detection_mental_roberta")
+        elif self.model_path.exists():
              print(f"   Loading tokenizer from {self.model_path}...")
              self.tokenizer = AutoTokenizer.from_pretrained(str(self.model_path))
              
@@ -32,7 +40,7 @@ class StressDetector:
                  str(self.model_path)
              )
         else:
-            # Check if this is a repo ID (basic check: contains '/')
+            # Check if this is a repo ID (fallback check)
             path_str = str(self.model_path)
             if "/" in path_str and not "\\" in path_str: # Simple heuristic for repo/model format
                  print(f"   Model directory not found locally, assuming Hugging Face Hub ID: {path_str}")

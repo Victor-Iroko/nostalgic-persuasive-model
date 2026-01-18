@@ -16,15 +16,21 @@ const querySchema = z.object({
 export default defineEventHandler(async (event) => {
   const query = await getValidatedQuery(event, querySchema.parse)
 
+  // Enforce 10-year age gap (Nostalgia Rule)
+  const currentYear = new Date().getFullYear()
+  const maxAllowedYear = currentYear - 10
+
+  // Cap yearEnd at maxAllowedYear
+  const effectiveYearEnd = query.yearEnd ? Math.min(query.yearEnd, maxAllowedYear) : maxAllowedYear
+
   const conditions = []
 
   // Year filtering
   if (query.yearStart) {
     conditions.push(gte(songs.year, query.yearStart))
   }
-  if (query.yearEnd) {
-    conditions.push(lte(songs.year, query.yearEnd))
-  }
+  // Use effectiveYearEnd instead of query.yearEnd
+  conditions.push(lte(songs.year, effectiveYearEnd))
 
   // Search filtering (by name or artist)
   if (query.search && query.search.trim()) {
@@ -122,6 +128,44 @@ export default defineEventHandler(async (event) => {
       items: results,
       count: results.length,
       mode: 'popular',
+    }
+  }
+
+  // Search Mode: Order by popularity
+  // CRITICAL FIX: Ignore yearStart for search to allow finding older classics
+  // even if they are outside the specific user era. Still enforce maxAllowedYear.
+  if (query.search && query.search.trim()) {
+    const searchTerm = `%${query.search.trim()}%`
+    const searchConditions = [
+      lte(songs.year, effectiveYearEnd),
+      sql`(${ilike(songs.name, searchTerm)} OR ${songs.artists}::text ILIKE ${searchTerm})`,
+    ]
+
+    if (query.excludeIds) {
+      const excludeList = query.excludeIds.split(',').filter(Boolean)
+      if (excludeList.length > 0) {
+        searchConditions.push(notInArray(songs.id, excludeList))
+      }
+    }
+
+    const results = await db
+      .select({
+        id: songs.id,
+        name: songs.name,
+        albumName: songs.albumName,
+        artists: songs.artists,
+        year: songs.year,
+        genre: songs.genre,
+      })
+      .from(songs)
+      .where(and(...searchConditions))
+      .orderBy(desc(songs.popularity))
+      .limit(query.limit)
+
+    return {
+      items: results,
+      count: results.length,
+      mode: 'search',
     }
   }
 

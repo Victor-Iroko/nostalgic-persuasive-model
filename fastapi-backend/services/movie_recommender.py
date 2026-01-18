@@ -66,6 +66,14 @@ class MovieRecommender:
         self.models_dir = models_dir or MODELS_DIR
         self.database_url = database_url or DATABASE_URL
         
+        # Database connection (lazy initialization)
+        self._conn: Optional[psycopg2.extensions.connection] = None
+        
+        # Mappings
+        self._user_id_map = {}
+        self._item_id_map = {}
+        self._old_movie_cache = {'internal_ids': [], 'movie_ids': [], 'metadata': {}}
+        
         # Load model artifacts
         repo_id = os.getenv("HF_REPO_ID")
         
@@ -88,6 +96,17 @@ class MovieRecommender:
                 
                 print("✓ Models downloaded and loaded from HF Hub")
                 
+                # Initialize mappings and cache (CRITICAL FIX)
+                self._user_id_map, self._user_feature_map, self._item_id_map, self._item_feature_map = (
+                    self.dataset.mapping()
+                )
+                # Reverse mapping
+                self._internal_to_movie = {v: k for k, v in self._item_id_map.items()}
+                self.n_items = len(self._item_id_map)
+                
+                # Build cache
+                self._old_movie_cache = self._build_old_movie_cache()
+                
             except Exception as e:
                 print(f"⚠ Failed to load from HF Hub: {e}")
                 print("Falling back to local models...")
@@ -104,7 +123,8 @@ class MovieRecommender:
         self.item_features = joblib.load(self.models_dir / "item_features.pkl")
         
         # Database connection (lazy initialization)
-        self._conn: Optional[psycopg2.extensions.connection] = None
+        if self._conn is None:
+             self._conn: Optional[psycopg2.extensions.connection] = None
         
         # Get internal mappings
         self._user_id_map, self._user_feature_map, self._item_id_map, self._item_feature_map = (
@@ -322,7 +342,7 @@ class MovieRecommender:
         
         if not internal_props:
             # Fallback if no valid history, return some popular movies
-            return self._get_popular_fallback(n_recommendations)
+            return self._get_popular_fallback(n_recommendations, min_years_old=min_years_old)
         
         # Build user embedding from liked items (weighted)
         user_embedding = self._build_user_features_from_items(internal_props)
@@ -374,23 +394,43 @@ class MovieRecommender:
         
         return pd.DataFrame(results)
 
-    def _get_popular_fallback(self, n: int) -> pd.DataFrame:
+    def _get_popular_fallback(self, n: int, min_years_old: int = 10) -> pd.DataFrame:
         """Fallback for empty history."""
-        # Just return some random items for now to avoid crash
-        import numpy as np
-        indices = np.random.choice(self.n_items, n, replace=False)
-        results = []
-        
         conn = self._get_connection()
         cursor = conn.cursor()
         
-        ids = [int(self._internal_to_movie[i]) for i in indices]
-        placeholders = ",".join(["%s"] * len(ids))
+        # Calculate max year
+        import datetime
+        current_year = datetime.date.today().year
+        max_year = current_year - min_years_old
         
-        cursor.execute(f"SELECT id, title, year, genres FROM movies WHERE id IN ({placeholders})", ids)
+        # Get random popular movies that meet the criteria
+        # This is a bit inefficient (fetching all IDs then sampling), but safe for now
+        # Ideally we'd have a 'popular_old_movies' table or view
+        cursor.execute("""
+            SELECT id FROM movies 
+            WHERE year <= %s 
+            ORDER BY rating_count DESC 
+            LIMIT 500
+        """, (max_year,))
+        
+        rows = cursor.fetchall()
+        
+        if not rows:
+            cursor.close()
+            return pd.DataFrame()
+            
+        # Sample from top 500
+        import random
+        all_ids = [r[0] for r in rows]
+        selected_ids = random.sample(all_ids, min(n, len(all_ids)))
+        
+        placeholders = ",".join(["%s"] * len(selected_ids))
+        cursor.execute(f"SELECT id, title, year, genres FROM movies WHERE id IN ({placeholders})", selected_ids)
         rows = cursor.fetchall()
         cursor.close()
         
+        results = []
         for row in rows:
             results.append({
                 'movieId': row[0],
@@ -434,13 +474,14 @@ class MovieRecommender:
         
         return {'error': f'Movie {movie_id} not found'}
     
-    def search_movies(self, query: str, limit: int = 10) -> pd.DataFrame:
+    def search_movies(self, query: str, limit: int = 10, min_years_old: int = 0) -> pd.DataFrame:
         """
         Search for movies by title in the database.
         
         Args:
             query: Search query (case-insensitive)
             limit: Maximum number of results
+            min_years_old: Minimum age of movie in years
             
         Returns:
             DataFrame with matching movies
@@ -448,12 +489,18 @@ class MovieRecommender:
         conn = self._get_connection()
         cursor = conn.cursor()
         
+        # Calculate max year
+        import datetime
+        current_year = datetime.date.today().year
+        max_year = current_year - min_years_old
+        
         cursor.execute("""
             SELECT id, title, year, genres
             FROM movies
             WHERE LOWER(title) LIKE %s
+            AND year <= %s
             LIMIT %s;
-        """, (f"%{query.lower()}%", limit))
+        """, (f"%{query.lower()}%", max_year, limit))
         
         rows = cursor.fetchall()
         cursor.close()

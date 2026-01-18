@@ -58,9 +58,10 @@ async def recommend_movies(
 
         # Generate recommendations
         recommendations_df = recommender.recommend(
-            liked_movie_ids=request.liked_movie_ids,
+            liked_items=[{"movieId": mid, "timestamp": None} for mid in request.liked_movie_ids], # Fix: adapt to new signature if needed, or check signature
             n_recommendations=request.n_recommendations,
             exclude_liked=request.exclude_liked,
+            min_years_old=10,
         )
 
         recommendations: list[MovieRecommendation] = []
@@ -124,7 +125,8 @@ async def search_movies(
     recommender: MovieRecommender = Depends(get_movie_recommender),
 ) -> MovieSearchResponse:
     """Search for movies by title."""
-    results_df = recommender.search_movies(request.query, limit=request.limit)
+    # Enforce 10-year age filter for nostalgic onboarding
+    results_df = recommender.search_movies(request.query, limit=request.limit, min_years_old=10)
 
     results: list[MovieInfo] = []
     for _, row in results_df.iterrows():

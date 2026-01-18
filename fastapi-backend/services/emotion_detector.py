@@ -32,9 +32,17 @@ class EmotionDetector:
             print("   ⚠️ EmotionDetector initialized in MOCK mode.")
             return
 
+        import os
+        repo_id = os.getenv("HF_REPO_ID")
         self.model_path = Path(model_path)
-
-        if self.model_path.exists():
+        
+        if repo_id:
+             print(f"   Loading tokenizer from HF Hub: {repo_id} (subfolder=emotion_model)...")
+             self.tokenizer = AutoTokenizer.from_pretrained(repo_id, subfolder="emotion_model")
+             
+             print(f"   Loading model from HF Hub: {repo_id} (subfolder=emotion_model)...")
+             self.model = AutoModelForSequenceClassification.from_pretrained(repo_id, subfolder="emotion_model")
+        elif self.model_path.exists():
             print(f"   Loading tokenizer from {self.model_path}...")
             self.tokenizer = AutoTokenizer.from_pretrained(str(self.model_path))
 
@@ -43,7 +51,7 @@ class EmotionDetector:
                 str(self.model_path)
             )
         else:
-            # Check if this is a repo ID
+             # Check if this is a repo ID (fallback check)
             path_str = str(self.model_path)
             if "/" in path_str and not "\\" in path_str:
                  print(f"   Model directory not found locally, assuming Hugging Face Hub ID: {path_str}")

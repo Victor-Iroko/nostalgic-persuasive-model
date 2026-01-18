@@ -85,6 +85,7 @@ const displayInfo = computed(() => {
       subtitle: song.artists?.join(', ') || 'Unknown Artist',
       year: song.year,
       meta: song.genre || song.albumName,
+      link: `https://open.spotify.com/track/${song.id}`,
     }
   }
 
@@ -96,6 +97,9 @@ const displayInfo = computed(() => {
     subtitle: movie.genres?.slice(0, 3).join(', ') || 'Movie',
     year: movie.year,
     meta: null,
+    link: `https://www.youtube.com/results?search_query=${encodeURIComponent(
+      `${movie.title} ${movie.year || ''} trailer`
+    )}`,
   }
 })
 </script>
@@ -142,7 +146,20 @@ const displayInfo = computed(() => {
           </p>
           <h4 class="truncate text-lg font-semibold">{{ displayInfo.title }}</h4>
           <p class="truncate text-sm text-muted">{{ displayInfo.subtitle }}</p>
-          <p v-if="displayInfo.meta" class="mt-1 text-xs text-muted">{{ displayInfo.meta }}</p>
+          <div class="mt-2 flex items-center gap-2">
+            <p v-if="displayInfo.meta" class="text-xs text-muted">{{ displayInfo.meta }}</p>
+            <UButton
+              size="2xs"
+              variant="ghost"
+              color="gray"
+              class="ml-auto"
+              :icon="displayInfo.type === 'song' ? 'i-lucide-headphones' : 'i-lucide-play-circle'"
+              :to="displayInfo.link"
+              target="_blank"
+            >
+              {{ displayInfo.type === 'song' ? 'Open on Spotify' : 'Search Trailer' }}
+            </UButton>
+          </div>
         </div>
       </div>
 

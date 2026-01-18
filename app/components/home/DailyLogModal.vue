@@ -5,6 +5,8 @@ const props = defineProps<{
   habitType?: 'exercise' | 'smoking_cessation'
   initialCompleted?: boolean
   initialNotes?: string
+  initialStressLevel?: number | null
+  initialEmotion?: string | null
   loading?: boolean
 }>()
 
@@ -126,7 +128,7 @@ const statusText = computed(() => {
         </div>
 
         <!-- Content -->
-        <div class="flex flex-col gap-6 overflow-y-auto p-6">
+        <div class="flex max-h-[60vh] flex-col gap-6 overflow-y-auto p-6">
           <!-- Habit Status Section -->
           <div
             class="rounded-xl border border-gray-200 bg-gray-50 p-5 dark:border-white/10 dark:bg-white/5"
@@ -182,7 +184,7 @@ const statusText = computed(() => {
             <div class="flex items-center justify-between">
               <label class="font-medium text-gray-900 dark:text-white">
                 <UIcon name="i-lucide-book-open" class="mr-1" />
-                {{ isPastDate ? 'Notes' : 'How did it go? (optional)' }}
+                {{ isPastDate ? 'Notes' : 'How did it go?' }}
               </label>
               <span class="text-xs text-gray-500 dark:text-gray-400">{{ wordCount }} words</span>
             </div>
@@ -202,6 +204,41 @@ const statusText = computed(() => {
               class="min-h-[100px] rounded-xl bg-gray-50 p-4 leading-relaxed whitespace-pre-wrap text-gray-700 dark:bg-white/5 dark:text-white/80"
             >
               {{ notes || 'No notes for this day.' }}
+            </div>
+          </div>
+
+          <!-- Analysis Section -->
+          <div
+            v-if="initialEmotion || initialStressLevel !== undefined"
+            class="rounded-xl border border-gray-200 bg-gray-50 p-5 dark:border-white/10 dark:bg-white/5"
+          >
+            <h3 class="mb-3 font-medium text-gray-900 dark:text-white">Daily Analysis</h3>
+            <div class="flex gap-4">
+              <!-- Emotion -->
+              <div v-if="initialEmotion" class="flex-1 rounded-lg bg-white p-3 dark:bg-black/20">
+                <div class="mb-1 text-xs text-muted uppercase">Emotion</div>
+                <div class="font-medium text-primary capitalize">{{ initialEmotion }}</div>
+              </div>
+              <!-- Stress -->
+              <div
+                v-if="initialStressLevel !== undefined && initialStressLevel !== null"
+                class="flex-1 rounded-lg bg-white p-3 dark:bg-black/20"
+              >
+                <div class="mb-1 text-xs text-muted uppercase">Stress Level</div>
+                <div class="flex items-center gap-2">
+                  <div
+                    class="h-2 w-2 rounded-full"
+                    :class="
+                      initialStressLevel < 0.3
+                        ? 'bg-green-500'
+                        : initialStressLevel < 0.6
+                          ? 'bg-orange-500'
+                          : 'bg-red-500'
+                    "
+                  />
+                  <span class="font-medium">{{ initialStressLevel.toFixed(2) }}</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>

@@ -177,6 +177,8 @@ const isTreatmentGroup = computed(
         :habit-type="habitType"
         :initial-completed="selectedDayLog?.completed"
         :initial-notes="selectedDayLog?.notes ?? ''"
+        :initial-stress-level="selectedDayLog?.stressLevel"
+        :initial-emotion="selectedDayLog?.emotion"
         :loading="savingLog"
         @save="handleSaveLog"
       />

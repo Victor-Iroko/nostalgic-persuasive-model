@@ -106,6 +106,19 @@ function nextMonth() {
     displayedDate.value = new CalendarDate(current.year, current.month + 1, 1)
   }
 }
+
+// Helpers for Emotion and Stress
+function getStressColor(level: number | null | undefined): string {
+  if (level === null || level === undefined) return 'bg-gray-200 dark:bg-gray-700'
+  if (level < 0.3) return 'bg-green-400'
+  if (level < 0.6) return 'bg-orange-400'
+  return 'bg-red-400'
+}
+
+function getLogForDate(date: CalendarDate) {
+  const dateStr = `${date.year}-${String(date.month).padStart(2, '0')}-${String(date.day).padStart(2, '0')}`
+  return logMap.value.get(dateStr)
+}
 </script>
 
 <template>
@@ -175,9 +188,38 @@ function nextMonth() {
           :disabled="loading || getDayStatus(day) === 'future'"
           @click="handleDayClick(day)"
         >
-          <span class="day-number">{{ day.day }}</span>
-          <span v-if="getDayStatus(day) === 'completed'" class="status-icon">✓</span>
-          <span v-else-if="getDayStatus(day) === 'missed'" class="status-icon">✗</span>
+          <div class="flex h-full w-full flex-col justify-between p-0.5 sm:p-1">
+            <div class="flex w-full items-start justify-between">
+              <span class="day-number">{{ day.day }}</span>
+              <!-- Completion Icon -->
+              <span v-if="getDayStatus(day) === 'completed'" class="status-icon">✓</span>
+              <span v-else-if="getDayStatus(day) === 'missed'" class="status-icon">✗</span>
+            </div>
+
+            <!-- Emotion & Stress (Only for completed/missed with data) -->
+            <div
+              v-if="
+                (getDayStatus(day) === 'completed' || getDayStatus(day) === 'missed') &&
+                getLogForDate(day)?.emotion
+              "
+              class="flex w-full flex-col items-center gap-0.5"
+            >
+              <span
+                class="w-full truncate text-center text-[9px] leading-tight font-medium sm:text-[10px]"
+              >
+                {{ getLogForDate(day)?.emotion }}
+              </span>
+              <div class="flex items-center gap-1">
+                <span
+                  :class="getStressColor(getLogForDate(day)?.stressLevel)"
+                  class="h-1.5 w-1.5 rounded-full"
+                />
+                <span class="text-[8px] font-medium opacity-80 sm:text-[9px]">
+                  {{ getLogForDate(day)?.stressLevel?.toFixed(1) }}
+                </span>
+              </div>
+            </div>
+          </div>
         </button>
       </div>
     </div>
@@ -188,7 +230,6 @@ function nextMonth() {
 .calendar-container {
   width: 100%;
   overflow-x: auto;
-  /* Add padding to prevent cell borders from touching card edge */
   padding: 0.25rem;
 }
 
@@ -200,7 +241,7 @@ function nextMonth() {
 
 .calendar-grid {
   display: grid;
-  grid-template-columns: repeat(7, minmax(36px, 1fr));
+  grid-template-columns: repeat(7, minmax(40px, 1fr));
   gap: 4px;
 }
 
@@ -237,14 +278,15 @@ function nextMonth() {
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
-  min-height: 36px;
-  min-width: 36px;
+  min-height: 44px;
+  min-width: 40px;
   border: 2px solid transparent;
+  overflow: hidden;
 }
 
 @media (min-width: 640px) {
   .calendar-cell {
-    min-height: 50px;
+    min-height: 60px;
     border-radius: 0.75rem;
   }
 }
@@ -258,25 +300,25 @@ function nextMonth() {
 }
 
 .day-number {
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   font-weight: 500;
+  line-height: 1;
 }
 
 @media (min-width: 640px) {
   .day-number {
-    font-size: 1rem;
+    font-size: 0.875rem;
   }
 }
 
 .status-icon {
   font-size: 0.625rem;
-  margin-top: 1px;
+  line-height: 1;
 }
 
 @media (min-width: 640px) {
   .status-icon {
     font-size: 0.75rem;
-    margin-top: 0.25rem;
   }
 }
 

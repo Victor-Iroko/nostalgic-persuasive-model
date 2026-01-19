@@ -37,7 +37,7 @@ async function handleLogin() {
     <!-- Header -->
     <div class="text-center">
       <div
-        class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-rose-500/20 to-pink-600/20"
+        class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-linear-to-br from-rose-500/20 to-pink-600/20"
       >
         <UIcon name="i-lucide-shield" class="h-8 w-8 text-rose-500" />
       </div>
@@ -76,7 +76,7 @@ async function handleLogin() {
         size="lg"
         block
         :loading="loading"
-        class="bg-gradient-to-r from-rose-500 to-pink-600"
+        class="bg-linear-to-r from-rose-500 to-pink-600"
       >
         Sign In
       </UButton>

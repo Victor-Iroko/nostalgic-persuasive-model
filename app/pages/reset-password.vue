@@ -31,9 +31,9 @@ const fields: AuthFormField[] = [
 const schema = z
   .object({
     password: z
-      .string({ required_error: 'Password is required' })
+      .string({ message: 'Password is required' })
       .min(8, 'Password must be at least 8 characters'),
-    confirmPassword: z.string({ required_error: 'Confirm password is required' }),
+    confirmPassword: z.string({ message: 'Confirm password is required' }),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: 'Passwords do not match',

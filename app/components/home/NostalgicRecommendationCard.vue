@@ -56,11 +56,54 @@ const isLoading = computed(() => props.loading || status.value === 'pending')
 const feedbackSubmitted = ref(false)
 const feedbackLoading = ref(false)
 
-async function submitFeedback(bringsBackMemories: boolean) {
+// Interaction Logging Logic
+const startTime = ref(Date.now())
+const hasEngaged = ref(false)
+const accumulatedDuration = ref(0)
+const lastActiveTime = ref(Date.now())
+
+// 1. Smart Timer (Pause on background)
+const visibility = useDocumentVisibility()
+watch(visibility, (current, previous) => {
+  if (current === 'hidden' && previous === 'visible') {
+    // Tab hidden: Add current session to total
+    accumulatedDuration.value += Date.now() - lastActiveTime.value
+  } else if (current === 'visible' && previous === 'hidden') {
+    // Tab visible: Reset active timer
+    lastActiveTime.value = Date.now()
+  }
+})
+
+function getTotalDuration() {
+  const currentSession = visibility.value === 'visible' ? Date.now() - lastActiveTime.value : 0
+  return Math.round((accumulatedDuration.value + currentSession) / 1000)
+}
+
+async function logInteraction(
+  type: 'view' | 'click' | 'skip' | 'next' | 'replay' | 'feedback',
+  extras: Record<string, unknown> = {}
+) {
   if (!recommendation.value) return
 
-  feedbackLoading.value = true
+  const duration = getTotalDuration()
+
+  // For 'view', we reset the timer and engagement state for the *next* event
+  if (type === 'view') {
+    startTime.value = Date.now()
+    lastActiveTime.value = Date.now()
+    accumulatedDuration.value = 0
+    hasEngaged.value = false
+  } else {
+    // Any interaction other than view counts as engagement
+    if (type !== 'skip') {
+      hasEngaged.value = true
+    }
+  }
+
+  // Fire and forget logging
   try {
+    // Use navigator.sendBeacon for 'exit' events (more reliable on close) but here we use standard fetch
+    // Nuxt/Fetch is usually fine unless the browser is aggressively killing processes
     await $fetch('/api/habits/feedback', {
       method: 'POST',
       body: {
@@ -70,21 +113,102 @@ async function submitFeedback(bringsBackMemories: boolean) {
             ? (recommendation.value.content as Song).id
             : (recommendation.value.content as Movie).id
         ),
-        bringsBackMemories,
+        interactionType: type,
+        durationSeconds: type === 'view' ? 0 : duration,
+        ...extras,
       },
     })
-    feedbackSubmitted.value = true
   } catch (error) {
-    console.error('Failed to submit feedback:', error)
+    console.error('Failed to log interaction:', error)
+  }
+}
+
+// 2. Safety Net (Capture exit)
+const exitLogged = ref(false)
+
+function sendExitLog() {
+  if (exitLogged.value || !recommendation.value) return
+
+  const duration = getTotalDuration()
+  // Only log if they viewed for > 5s to avoid noise
+  if (duration > 5) {
+    // Logic: If engaged OR duration > 30s (Passive View) -> Next
+    // Otherwise -> Skip
+    const type = hasEngaged.value || duration > 30 ? 'next' : 'skip'
+
+    // Construct payload
+    const payload = {
+      contentType: recommendation.value.type,
+      contentId: String(
+        recommendation.value.type === 'song'
+          ? (recommendation.value.content as Song).id
+          : (recommendation.value.content as Movie).id
+      ),
+      interactionType: type,
+      durationSeconds: duration,
+    }
+
+    // Use sendBeacon for reliability during unload
+    const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' })
+    navigator.sendBeacon('/api/habits/feedback', blob)
+
+    exitLogged.value = true
+  }
+}
+
+// Handle component destruction (SPA navigation)
+onUnmounted(() => {
+  sendExitLog()
+})
+
+// Handle Browser/Tab Close
+// 'pagehide' is more reliable than 'beforeunload' for mobile/modern browsers
+useEventListener(typeof window !== 'undefined' ? window : null, 'pagehide', () => {
+  sendExitLog()
+})
+
+// Watch for content changes to log 'view'
+watch(
+  recommendation,
+  (newVal) => {
+    if (newVal) {
+      // Reset state for new content
+      exitLogged.value = false
+      // Small delay to ensure render
+      setTimeout(() => logInteraction('view'), 500)
+    }
+  },
+  { immediate: true }
+)
+
+async function submitFeedback(bringsBackMemories: boolean) {
+  if (!recommendation.value) return
+
+  feedbackLoading.value = true
+  try {
+    await logInteraction('feedback', { bringsBackMemories })
+    feedbackSubmitted.value = true
   } finally {
     feedbackLoading.value = false
   }
 }
 
 async function handleRefresh() {
+  // Log skip or next based on prior engagement OR duration (Passive View > 30s)
+  if (recommendation.value) {
+    const duration = getTotalDuration()
+    const interactionType = hasEngaged.value || duration > 30 ? 'next' : 'skip'
+    await logInteraction(interactionType)
+    // Prevent double logging on component unmount/refresh
+    exitLogged.value = true
+  }
   feedbackSubmitted.value = false
   await refresh()
   emit('refresh')
+}
+
+function handleLinkClick() {
+  logInteraction('click')
 }
 
 // Helper to get display info
@@ -150,7 +274,7 @@ const displayInfo = computed(() => {
     <div v-else-if="displayInfo" class="space-y-4">
       <div class="flex items-start gap-4">
         <div
-          class="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br"
+          class="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-linear-to-br"
           :class="iconBgClass"
         >
           <UIcon :name="displayInfo.icon" class="text-3xl" :class="mainIconClass" />
@@ -162,16 +286,18 @@ const displayInfo = computed(() => {
           </p>
           <h4 class="truncate text-lg font-semibold">{{ displayInfo.title }}</h4>
           <p class="truncate text-sm text-muted">{{ displayInfo.subtitle }}</p>
-          <div class="mt-2 flex items-center gap-2">
-            <p v-if="displayInfo.meta" class="text-xs text-muted">{{ displayInfo.meta }}</p>
+          <p v-if="displayInfo.meta" class="text-xs text-muted">{{ displayInfo.meta }}</p>
+
+          <div class="mt-4">
             <UButton
-              size="2xs"
-              variant="ghost"
-              color="gray"
-              class="ml-auto"
+              size="sm"
+              variant="soft"
+              :color="isControl ? 'primary' : 'primary'"
+              class="w-full justify-center sm:w-auto"
               :icon="displayInfo.type === 'song' ? 'i-lucide-headphones' : 'i-lucide-play-circle'"
               :to="displayInfo.link"
               target="_blank"
+              @click="handleLinkClick"
             >
               {{ displayInfo.type === 'song' ? 'Open on Spotify' : 'Search Trailer' }}
             </UButton>

@@ -2,7 +2,7 @@
   <div class="grid min-h-screen lg:grid-cols-2">
     <!-- Left Column: Branding & Visuals -->
     <div
-      class="relative hidden flex-col justify-between overflow-hidden bg-gradient-to-br from-zinc-50 to-zinc-200 p-12 text-gray-900 lg:flex dark:from-zinc-900 dark:to-zinc-950 dark:text-white"
+      class="relative hidden flex-col justify-between overflow-hidden bg-linear-to-br from-zinc-50 to-zinc-200 p-12 text-gray-900 lg:flex dark:from-zinc-900 dark:to-zinc-950 dark:text-white"
     >
       <div class="relative z-10">
         <div class="mb-8 flex items-center gap-2">

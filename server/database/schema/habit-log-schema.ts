@@ -9,11 +9,20 @@ import {
   unique,
   pgEnum,
   real,
+  integer,
 } from 'drizzle-orm/pg-core'
 import { user } from './auth-schema'
 
 // Content feedback type enum
 export const contentTypeEnum = pgEnum('content_type', ['song', 'movie'])
+export const interactionTypeEnum = pgEnum('interaction_type', [
+  'view',
+  'click',
+  'skip',
+  'next',
+  'replay',
+  'feedback',
+])
 
 // Daily habit logs - tracks whether user completed their habit each day
 export const dailyHabitLogs = pgTable(
@@ -41,7 +50,7 @@ export const dailyHabitLogs = pgTable(
   ]
 )
 
-// Content feedback - stores "brings back memories" responses
+// Content feedback - stores "brings back memories" responses and interaction logs
 export const contentFeedback = pgTable(
   'content_feedback',
   {
@@ -51,7 +60,9 @@ export const contentFeedback = pgTable(
       .references(() => user.id, { onDelete: 'cascade' }),
     contentType: contentTypeEnum('content_type').notNull(),
     contentId: text('content_id').notNull(), // song ID or movie ID
-    bringsBackMemories: boolean('brings_back_memories').notNull(),
+    interactionType: interactionTypeEnum('interaction_type').notNull().default('feedback'),
+    durationSeconds: integer('duration_seconds'), // How long they engaged
+    bringsBackMemories: boolean('brings_back_memories'), // Nullable for non-feedback events
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => [

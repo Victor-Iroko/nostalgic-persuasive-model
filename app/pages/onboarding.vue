@@ -16,6 +16,7 @@ const isSubmitting = ref(false)
 // Onboarding data
 const experimentGroup = ref<ExperimentGroup | null>(null)
 const birthYear = ref<number | null>(null)
+const nostalgicPeriod = ref<{ start: number; end: number } | null>(null)
 const habitType = ref<HabitType | null>(null)
 const selectedContent = ref<{ movieIds: number[]; songIds: string[] } | null>(null)
 
@@ -29,18 +30,20 @@ const steps = computed(() => {
       { icon: 'i-lucide-shield-check', label: 'Consent' },
     ]
   }
-  // Treatment group: Group Selection -> Birth Year -> Habit -> Favorites -> Consent (5 steps)
+  // Treatment group: Group Selection -> Birth Year -> Habit -> Period -> Favorites -> Consent (6 steps)
   return [
     { icon: 'i-lucide-flask-conical', label: 'Study Group' },
     { icon: 'i-lucide-calendar-heart', label: 'Birth Year' },
     { icon: 'i-lucide-target', label: 'Your Goal' },
+    { icon: 'i-lucide-sparkles', label: 'Nostalgic Era' },
     { icon: 'i-lucide-heart', label: 'Favorites' },
     { icon: 'i-lucide-shield-check', label: 'Consent' },
   ]
 })
 
 // Computed defaults for nostalgic period (used for content selection)
-const defaultNostalgicPeriod = computed(() => {
+const activeNostalgicPeriod = computed(() => {
+  if (nostalgicPeriod.value) return nostalgicPeriod.value
   if (!birthYear.value) return { start: 1990, end: 2005 }
   return {
     start: birthYear.value + 5,
@@ -65,14 +68,24 @@ function handleHabitNext(habit: HabitType) {
     // Control group skips to consent (step 2)
     currentStep.value = 2
   } else {
-    // Treatment group goes to content selection (step 3)
+    // Treatment group goes to period selection (step 3)
     currentStep.value = 3
   }
 }
 
+function handlePeriodNext(period: { start: number; end: number }) {
+  nostalgicPeriod.value = period
+  currentStep.value = 4
+}
+
+function handlePeriodSkip() {
+  nostalgicPeriod.value = null
+  currentStep.value = 4
+}
+
 function handleContentNext(content: { movieIds: number[]; songIds: string[] }) {
   selectedContent.value = content
-  currentStep.value = 4
+  currentStep.value = 5
 }
 
 async function handleComplete(consent: boolean) {
@@ -107,6 +120,8 @@ async function handleComplete(consent: boolean) {
             experimentGroup: 'treatment' as const,
             birthYear: birthYear.value!,
             habitType: habitType.value,
+            nostalgicPeriodStart: activeNostalgicPeriod.value.start,
+            nostalgicPeriodEnd: activeNostalgicPeriod.value.end,
             selectedMovieIds: selectedContent.value!.movieIds,
             selectedSongIds: selectedContent.value!.songIds,
             researchConsent: consent,
@@ -165,11 +180,12 @@ const currentComponent = computed(() => {
     if (currentStep.value === 1) return 'habit'
     if (currentStep.value === 2) return 'consent'
   } else {
-    // Treatment: 0=group, 1=birthYear, 2=habit, 3=content, 4=consent
+    // Treatment: 0=group, 1=birthYear, 2=habit, 3=period, 4=content, 5=consent
     if (currentStep.value === 1) return 'birthYear'
     if (currentStep.value === 2) return 'habit'
-    if (currentStep.value === 3) return 'content'
-    if (currentStep.value === 4) return 'consent'
+    if (currentStep.value === 3) return 'period'
+    if (currentStep.value === 4) return 'content'
+    if (currentStep.value === 5) return 'consent'
   }
 
   return 'group'
@@ -247,11 +263,18 @@ const currentComponent = computed(() => {
             key="step-habit"
             @next="handleHabitNext"
           />
+          <OnboardingNostalgicPeriod
+            v-else-if="currentComponent === 'period'"
+            key="step-period"
+            :birth-year="birthYear || 2000"
+            @next="handlePeriodNext"
+            @skip="handlePeriodSkip"
+          />
           <OnboardingContentSelection
             v-else-if="currentComponent === 'content'"
             key="step-content"
-            :period-start="defaultNostalgicPeriod.start"
-            :period-end="defaultNostalgicPeriod.end"
+            :period-start="activeNostalgicPeriod.start"
+            :period-end="activeNostalgicPeriod.end"
             @next="handleContentNext"
           />
           <OnboardingResearchConsent

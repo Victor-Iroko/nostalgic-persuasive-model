@@ -32,7 +32,7 @@ CONTEXT_DIM = 12
 class LinUCBBandit:
     """
     LinUCB contextual bandit using MABWiser.
-    
+
     LinUCB maintains a linear model for each arm and uses upper confidence
     bounds for exploration. It learns the relationship between context
     features and rewards for each arm (content type/genre).
@@ -55,28 +55,35 @@ class LinUCBBandit:
         # Default arms: genre-only (12 total)
         # Genre implicitly identifies content type (movie genres vs song genres don't overlap)
         if arms is None:
-            movie_genres = ["drama", "comedy", "action", "romance", "thriller", "other_movie"]
+            movie_genres = [
+                "drama",
+                "comedy",
+                "action",
+                "romance",
+                "thriller",
+                "other_movie",
+            ]
             song_genres = ["pop", "rock", "hiphop", "rnb", "country", "other_song"]
             arms = movie_genres + song_genres
-        
+
         self.arms = arms
         self.alpha = alpha
         self.context_dim = context_dim
         self.n_updates = 0
-        
+
         # Initialize MABWiser with LinUCB policy
         self.mab = MAB(
             arms=arms,
             learning_policy=LearningPolicy.LinUCB(alpha=alpha),
         )
-        
+
         # Track if we have any training data
         self._is_fitted = False
 
     def _get_arm_from_candidate(self, candidate: dict) -> str:
         """Map a candidate to its genre arm."""
         content_type = candidate.get("type", "movie")
-        
+
         if content_type == "movie":
             raw_genre = candidate.get("genres", "")
             return normalize_movie_genre(raw_genre)
@@ -90,7 +97,7 @@ class LinUCBBandit:
         if len(context) < self.context_dim:
             context = np.pad(context, (0, self.context_dim - len(context)))
         elif len(context) > self.context_dim:
-            context = context[:self.context_dim]
+            context = context[: self.context_dim]
         return context.reshape(1, -1)
 
     def select(
@@ -110,18 +117,19 @@ class LinUCBBandit:
         """
         if not candidates:
             raise ValueError("No candidates provided")
-        
+
         context_2d = self._ensure_context_shape(context)
-        
+
         # If not fitted yet, select randomly
         if not self._is_fitted:
             import random
+
             idx = random.randint(0, len(candidates) - 1)
             return idx, 0.5
-        
+
         # Map candidates to arms
         candidate_arms = [self._get_arm_from_candidate(c) for c in candidates]
-        
+
         # Get prediction from MAB for each candidate's arm
         scores = []
         for i, arm in enumerate(candidate_arms):
@@ -132,11 +140,11 @@ class LinUCBBandit:
             else:
                 score = 0.5
             scores.append((i, score))
-        
+
         # Sort by score and return best
         scores.sort(key=lambda x: x[1], reverse=True)
         best_idx, best_score = scores[0]
-        
+
         return best_idx, float(best_score)
 
     def update(
@@ -155,11 +163,11 @@ class LinUCBBandit:
         """
         context_2d = self._ensure_context_shape(context)
         arm = self._get_arm_from_candidate(candidate)
-        
+
         # Convert reward to binary decision for simpler learning
         decision = arm
         binary_reward = 1 if reward > 0.5 else 0
-        
+
         if not self._is_fitted:
             # First fit
             self.mab.fit(
@@ -175,10 +183,12 @@ class LinUCBBandit:
                 rewards=[binary_reward],
                 contexts=context_2d,
             )
-        
+
         self.n_updates += 1
 
-    def warm_start(self, decisions: list[str], rewards: list[float], contexts: np.ndarray) -> None:
+    def warm_start(
+        self, decisions: list[str], rewards: list[float], contexts: np.ndarray
+    ) -> None:
         """
         Warm start the bandit with historical data.
 
@@ -189,7 +199,7 @@ class LinUCBBandit:
         """
         if len(decisions) == 0:
             return
-            
+
         self.mab.fit(
             decisions=decisions,
             rewards=rewards,
@@ -251,7 +261,7 @@ class LinUCBBandit:
 class HierarchicalBandit:
     """
     Hierarchical bandit with global and per-user LinUCB models.
-    
+
     - Global model learns from all users
     - Per-user models refine predictions for individual users
     - Blends predictions based on user's feedback history
@@ -273,27 +283,32 @@ class HierarchicalBandit:
         """
         self.models_dir = Path(models_dir)
         self.models_dir.mkdir(parents=True, exist_ok=True)
-        
+
         self.alpha = alpha
         self.min_user_updates = min_user_updates
-        
+
         # Load or create global model
         self.global_model = self._load_or_create_global()
-        
+
         # Per-user models (lazy loaded)
         self.user_models: dict[str, LinUCBBandit] = {}
 
     def _load_or_create_global(self) -> LinUCBBandit:
         """Load global model from disk or create new one."""
         repo_id = os.getenv("HF_REPO_ID")
-            
+
         if repo_id:
             print(f"Loading global bandit from Hugging Face Hub: {repo_id}...")
             try:
                 from huggingface_hub import hf_hub_download
-                model_path = hf_hub_download(repo_id=repo_id, filename="bandit/global_bandit.joblib")
+
+                model_path = hf_hub_download(
+                    repo_id=repo_id, filename="bandit/global_bandit.joblib"
+                )
                 bandit = LinUCBBandit.load(Path(model_path))
-                print(f"   Loaded global bandit from HF Hub with {bandit.n_updates} updates (full model)")
+                print(
+                    f"   Loaded global bandit from HF Hub with {bandit.n_updates} updates (full model)"
+                )
                 return bandit
             except Exception as e:
                 print(f"⚠ Failed to load global bandit from HF Hub: {e}")
@@ -304,22 +319,26 @@ class HierarchicalBandit:
         if joblib_path.exists():
             try:
                 bandit = LinUCBBandit.load(joblib_path)
-                print(f"   Loaded global bandit with {bandit.n_updates} updates (full model)")
+                print(
+                    f"   Loaded global bandit with {bandit.n_updates} updates (full model)"
+                )
                 return bandit
             except Exception as e:
                 print(f"   Could not load global bandit joblib: {e}")
-        
+
         # Fallback to JSON (metadata only)
         json_path = self.models_dir / "global_bandit.json"
         if json_path.exists():
             try:
                 with open(json_path) as f:
                     data = json.load(f)
-                print(f"   Loaded global bandit metadata ({data.get('n_updates', 0)} updates)")
+                print(
+                    f"   Loaded global bandit metadata ({data.get('n_updates', 0)} updates)"
+                )
                 return LinUCBBandit.from_dict(data)
             except Exception as e:
                 print(f"   Could not load global bandit json: {e}")
-        
+
         return LinUCBBandit(alpha=self.alpha)
 
     def _save_global(self) -> None:
@@ -336,7 +355,7 @@ class HierarchicalBandit:
                 return LinUCBBandit.load(joblib_path)
             except Exception:
                 pass
-        
+
         # Fallback to JSON
         json_path = self.models_dir / f"user_{user_id}.json"
         if json_path.exists():
@@ -390,25 +409,26 @@ class HierarchicalBandit:
         except Exception as e:
             print(f"Global model selection error: {e}")
             import random
+
             return random.randint(0, len(candidates) - 1), 0.5
-        
+
         # Get user model
         user_model = self.get_user_model(user_id)
-        
+
         # Blend if user has enough history
         if user_model.n_updates >= self.min_user_updates:
             try:
                 user_idx, user_score = user_model.select(context, candidates)
-                
+
                 # Calculate blend weight
                 blend = min(user_model.n_updates / 50, 0.7)
-                
+
                 # Use weighted selection
                 if user_score * blend > global_score * (1 - blend):
                     return user_idx, user_score
             except Exception:
                 pass
-        
+
         return global_idx, global_score
 
     def update(
@@ -433,7 +453,7 @@ class HierarchicalBandit:
             self._save_global()
         except Exception as e:
             print(f"Global model update error: {e}")
-        
+
         # Update per-user model
         try:
             user_model = self.get_user_model(user_id)
@@ -458,26 +478,26 @@ class HierarchicalBandit:
         """
         if not selected_items:
             return
-            
+
         if context is None:
             # Neutral context
             context = np.zeros(CONTEXT_DIM)
             context[0] = 0.3  # Neutral stress
             context[5] = 1.0  # Neutral emotion
-        
+
         user_model = self.get_user_model(user_id)
-        
+
         # Build training data from selections
         decisions = []
         rewards = []
         contexts = []
-        
+
         for item in selected_items:
             arm = user_model._get_arm_from_candidate(item)
             decisions.append(arm)
             rewards.append(1)  # Selection = positive
             contexts.append(context)
-        
+
         if decisions:
             contexts_array = np.array(contexts)
             user_model.warm_start(decisions, rewards, contexts_array)
@@ -509,15 +529,15 @@ def build_context_features(
         Context feature vector (12 dimensions).
     """
     features = []
-    
+
     # Stress (1 feature)
     features.append(stress_score)
-    
+
     # Emotion one-hot (7 features)
     emotions = ["anger", "fear", "joy", "love", "neutral", "sadness", "surprise"]
     for e in emotions:
         features.append(1.0 if emotion == e else 0.0)
-    
+
     # User's historical positive rate (1 feature)
     features.append(user_positive_rate)
 
@@ -528,11 +548,11 @@ def build_context_features(
     else:
         norm_birth_year = 0.0  # Default to 2000
     features.append(norm_birth_year)
-    
+
     # Pad to CONTEXT_DIM
     while len(features) < CONTEXT_DIM:
         features.append(0.0)
-    
+
     return np.array(features[:CONTEXT_DIM], dtype=np.float32)
 
 
@@ -629,6 +649,7 @@ def normalize_song_genre(raw: str) -> str:
 # Nostalgia Scoring
 # =============================================================================
 
+
 def age_nostalgia(
     age_at_release: int,
     peak_age: float = 13.0,
@@ -637,34 +658,34 @@ def age_nostalgia(
 ) -> float:
     """
     Age-based nostalgia score.
-    
+
     - Post-birth: Gaussian centered at peak_age (reminiscence bump)
     - Pre-birth: Exponential decay from birth point
-    
+
     Args:
         age_at_release: User's age when content was released (can be negative)
         peak_age: Peak nostalgia age (default 13, based on psychology research)
         width: Gaussian width (default 8)
         prebirth_decay: Decay rate for pre-birth content (default 0.03)
-    
+
     Returns:
         Age nostalgia score (0-1)
     """
     if age_at_release >= 0:
-        return math.exp(-((age_at_release - peak_age) ** 2) / (2 * width ** 2))
+        return math.exp(-((age_at_release - peak_age) ** 2) / (2 * width**2))
     else:
-        birth_score = math.exp(-((0 - peak_age) ** 2) / (2 * width ** 2))
+        birth_score = math.exp(-((0 - peak_age) ** 2) / (2 * width**2))
         return birth_score * math.exp(-prebirth_decay * abs(age_at_release))
 
 
 def popularity_score(rating_count: float, max_count: float) -> float:
     """
     Log-scaled popularity score to prevent mega-hits from dominating.
-    
+
     Args:
         rating_count: Number of ratings for this content
         max_count: Maximum rating count in dataset
-    
+
     Returns:
         Popularity score (0-1)
     """
@@ -679,17 +700,18 @@ def nostalgia_score(
     rating_count: float,
     max_count: float,
     use_linear: bool = False,
+    target_period: tuple[int, int] | None = None,
 ) -> float:
     """
     Combined nostalgia score. Popularity BOOSTS but cannot CREATE nostalgia.
-    
+
     Formula: personal * (0.7 + 0.3 * pop) + cultural
     - personal: age-based nostalgia (lived experience)
     - cultural: popularity boost for pre-birth content (inherited memory)
-    
+
     Note: Recency filtering (10-year minimum) is handled at the recommender level,
     so all content passed here is already guaranteed to be old enough.
-    
+
     Args:
         birth_year: User's birth year
         release_year: Content release year
@@ -697,29 +719,58 @@ def nostalgia_score(
         max_count: Maximum rating count in dataset
         use_linear: If True, use linear scaling (value/max) instead of log scaling.
                     Use for pre-normalized scores like Spotify popularity (0-100).
-    
+        target_period: Optional (start_year, end_year) tuple for explicit user preference.
+                       If provided, peak nostalgia is centered on this period.
+
     Returns:
         Nostalgia score (0-1)
     """
-    age_at_release = release_year - birth_year
+    if target_period:
+        # User defined a specific period: Center Gaussian on the middle of that period
+        start, end = target_period
+        mid_year = (start + end) / 2
+        # Calculate age user WOULD be at that time (relative to birth year doesn't matter as much as distance from target)
+        # Actually, simpler: just measure distance from release_year to mid_year
+        # We can reuse age_nostalgia logic but re-parameterized
 
-    age_score = age_nostalgia(age_at_release)
-    
-    # Use linear scaling for pre-normalized scores (e.g., Spotify popularity 0-100)
-    # Use log scaling for raw counts (e.g., MovieLens rating_count)
+        # Distance from target center
+        dist = abs(release_year - mid_year)
+
+        # Width should cover the range. Range is end - start. Sigma approx range/2
+        # But let's keep it tight.
+        width = max(5.0, (end - start) / 2.0)
+
+        # Gaussian score
+        personal = math.exp(-(dist**2) / (2 * width**2))
+
+        # Cultural boost is less relevant here because they EXPLICITLY asked for this time
+        # so we trust the period match more.
+        cultural = 0.0
+    else:
+        # Default: Use Reminiscence Bump (Age 13)
+        age_at_release = release_year - birth_year
+        personal = age_nostalgia(age_at_release)
+        # Cultural nostalgia (only for pre-birth content)
+        cultural = 0.0  # Default logic moved below
+
+        # Cultural boost for pre-birth content if NOT using target period
+        # (inherited memory logic)
+        # Calculate pop score first
+        if use_linear:
+            pop_score = min(1.0, rating_count / max_count) if max_count > 0 else 0.0
+        else:
+            pop_score = popularity_score(rating_count, max_count)
+
+        if age_at_release < 0:
+            cultural = pop_score * 0.4
+
+    # Calculate popularity score (needed for both paths)
     if use_linear:
         pop_score = min(1.0, rating_count / max_count) if max_count > 0 else 0.0
     else:
         pop_score = popularity_score(rating_count, max_count)
 
-    # Personal nostalgia (lived experience)
-    personal = age_score
-
-    # Cultural nostalgia (only for pre-birth content)
-    cultural = pop_score * 0.4 if age_at_release < 0 else 0.0
-
     # Final score: popularity boosts but doesn't create nostalgia
     final = personal * (0.7 + 0.3 * pop_score) + cultural
 
     return round(min(1.0, max(0.0, final)), 3)
-

@@ -13,6 +13,8 @@ export default defineEventHandler(async (event) => {
       experimentGroup: userPreferences.experimentGroup,
       researchConsent: userPreferences.researchConsent,
       onboardingCompletedAt: userPreferences.onboardingCompletedAt,
+      nostalgicPeriodStart: userPreferences.nostalgicPeriodStart,
+      nostalgicPeriodEnd: userPreferences.nostalgicPeriodEnd,
     })
     .from(userPreferences)
     .where(eq(userPreferences.userId, user.id))
@@ -22,11 +24,12 @@ export default defineEventHandler(async (event) => {
     return { preferences: null, onboardingComplete: false }
   }
 
-  // Calculate nostalgic period from birth year (for treatment group)
-  const nostalgicPeriodStart = prefs.birthYear ? prefs.birthYear + 5 : null
-  const nostalgicPeriodEnd = prefs.birthYear
-    ? Math.min(prefs.birthYear + 19, new Date().getFullYear() - 1)
-    : null
+  // Use stored nostalgic period or calculate from birth year if not set
+  const nostalgicPeriodStart =
+    prefs.nostalgicPeriodStart ?? (prefs.birthYear ? prefs.birthYear + 5 : null)
+  const nostalgicPeriodEnd =
+    prefs.nostalgicPeriodEnd ??
+    (prefs.birthYear ? Math.min(prefs.birthYear + 19, new Date().getFullYear() - 1) : null)
 
   return {
     preferences: {

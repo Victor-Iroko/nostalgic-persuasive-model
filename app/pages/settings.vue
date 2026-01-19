@@ -30,11 +30,83 @@ interface UserPreferencesResponse {
   onboardingComplete: boolean
 }
 
-const { data: preferencesData, status: preferencesStatus } =
-  await useFetch<UserPreferencesResponse>('/api/habits/preferences', { lazy: true })
+const {
+  data: preferencesData,
+  status: preferencesStatus,
+  refresh: refreshPreferences,
+} = await useFetch<UserPreferencesResponse>('/api/habits/preferences', { lazy: true })
 
 // Computed to access preferences
 const preferences = computed(() => preferencesData.value?.preferences)
+
+// Nostalgic Period Editing
+const isEditingPeriod = ref(false)
+const editStartYear = ref(0)
+const editEndYear = ref(0)
+const editPeriodLoading = ref(false)
+
+// Generate year options
+const startYearOptions = computed(() => {
+  const years = []
+  const minYear = preferences.value?.birthYear || 1960
+  const maxYear = new Date().getFullYear() - 1
+  for (let year = minYear; year <= maxYear; year++) {
+    years.push({ label: year.toString(), value: year })
+  }
+  return years
+})
+
+const endYearOptions = computed(() => {
+  const years = []
+  const minYear = editStartYear.value
+  const maxYear = new Date().getFullYear() - 1
+  for (let year = minYear; year <= maxYear; year++) {
+    years.push({ label: year.toString(), value: year })
+  }
+  return years
+})
+
+// Initialize edit values when entering edit mode
+watch(isEditingPeriod, (isEditing) => {
+  if (isEditing && preferences.value) {
+    editStartYear.value =
+      preferences.value.nostalgicPeriodStart ||
+      (preferences.value.birthYear ? preferences.value.birthYear + 5 : 1990)
+    editEndYear.value =
+      preferences.value.nostalgicPeriodEnd ||
+      (preferences.value.birthYear ? preferences.value.birthYear + 19 : 2005)
+  }
+})
+
+async function saveNostalgicPeriod() {
+  if (editEndYear.value < editStartYear.value) {
+    toast.add({ title: 'End year must be after start year', color: 'error' })
+    return
+  }
+
+  editPeriodLoading.value = true
+  try {
+    await $fetch('/api/user/preferences', {
+      method: 'PUT',
+      body: {
+        nostalgicPeriodStart: editStartYear.value,
+        nostalgicPeriodEnd: editEndYear.value,
+      },
+    })
+
+    await refreshPreferences()
+    isEditingPeriod.value = false
+    toast.add({ title: 'Nostalgic period updated', color: 'success' })
+  } catch (error: unknown) {
+    toast.add({
+      title: 'Failed to update period',
+      description: error instanceof Error ? error.message : 'An error occurred',
+      color: 'error',
+    })
+  } finally {
+    editPeriodLoading.value = false
+  }
+}
 
 // Initialize form with current user data
 watchEffect(() => {
@@ -205,13 +277,76 @@ const habitTypeLabel = computed(() => {
 
           <!-- Nostalgic Period (treatment only) -->
           <div
-            v-if="preferences.experimentGroup === 'treatment' && preferences.nostalgicPeriodStart"
-            class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"
+            v-if="preferences.experimentGroup === 'treatment'"
+            class="flex flex-col gap-1 border-b border-gray-100 pb-4 last:border-0 last:pb-0 sm:flex-row sm:items-start sm:justify-between dark:border-gray-800"
           >
-            <span class="text-sm font-medium">Nostalgic Period</span>
-            <span class="text-sm text-muted">
-              {{ preferences.nostalgicPeriodStart }} - {{ preferences.nostalgicPeriodEnd }}
-            </span>
+            <div class="py-1">
+              <span class="block text-sm font-medium">Nostalgic Period</span>
+              <p class="text-xs text-muted">The era that brings you joy</p>
+            </div>
+
+            <div v-if="!isEditingPeriod" class="flex items-center gap-3">
+              <span class="text-sm font-medium">
+                {{ preferences.nostalgicPeriodStart }} - {{ preferences.nostalgicPeriodEnd }}
+              </span>
+              <UButton
+                size="xs"
+                variant="ghost"
+                color="primary"
+                icon="i-lucide-pencil"
+                @click="isEditingPeriod = true"
+              >
+                Edit
+              </UButton>
+            </div>
+
+            <div
+              v-else
+              class="flex flex-col items-end gap-3 rounded-lg bg-gray-50 p-3 sm:w-96 dark:bg-gray-800/50"
+            >
+              <div class="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
+                <div class="flex flex-1 items-center gap-2">
+                  <label class="text-xs font-medium text-muted">From</label>
+                  <USelectMenu
+                    v-model="editStartYear"
+                    :items="startYearOptions"
+                    value-key="value"
+                    size="md"
+                    class="flex-1"
+                  />
+                </div>
+                <div class="flex flex-1 items-center gap-2">
+                  <label class="text-xs font-medium text-muted">To</label>
+                  <USelectMenu
+                    v-model="editEndYear"
+                    :items="endYearOptions"
+                    value-key="value"
+                    size="md"
+                    class="flex-1"
+                  />
+                </div>
+              </div>
+
+              <div class="flex gap-2">
+                <UButton
+                  size="xs"
+                  variant="ghost"
+                  color="neutral"
+                  :disabled="editPeriodLoading"
+                  @click="isEditingPeriod = false"
+                >
+                  Cancel
+                </UButton>
+                <UButton
+                  size="xs"
+                  color="primary"
+                  :loading="editPeriodLoading"
+                  @click="saveNostalgicPeriod"
+                >
+                  Save
+                </UButton>
+              </div>
+            </div>
           </div>
 
           <!-- Habit Type -->

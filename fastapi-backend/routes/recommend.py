@@ -58,7 +58,9 @@ def fetch_user_preferences(user_id: str) -> dict | None:
                 selected_movie_ids,
                 selected_song_ids,
                 birth_year,
-                experiment_group
+                experiment_group,
+                nostalgic_period_start,
+                nostalgic_period_end
             FROM user_preferences
             WHERE user_id = %s
             LIMIT 1;
@@ -76,6 +78,8 @@ def fetch_user_preferences(user_id: str) -> dict | None:
             "selected_song_ids": pref_row[1] or [],
             "birth_year": pref_row[2],
             "experiment_group": pref_row[3] or "treatment",
+            "nostalgic_period_start": pref_row[4],
+            "nostalgic_period_end": pref_row[5],
         }
 
         # 2. Fetch timestamps for selected items (from content_feedback if available)
@@ -179,6 +183,12 @@ async def get_recommendation(
 
     # Calculate Nostalgic Center (Legacy support, but we use birth year now)
     birth_year = prefs.get("birth_year") or 2000
+
+    # Get custom nostalgic period if set
+    target_period = None
+    if prefs.get("nostalgic_period_start") and prefs.get("nostalgic_period_end"):
+        target_period = (prefs["nostalgic_period_start"], prefs["nostalgic_period_end"])
+        print(f"[DEBUG] Using custom nostalgic period: {target_period}")
 
     # Prepare Liked Items with Timestamps for Weighting
     liked_movies = []
@@ -363,6 +373,7 @@ async def get_recommendation(
                             release_year=int(movie_year) if movie_year else 2000,
                             rating_count=float(rating_count),
                             max_count=MAX_MOVIE_RATINGS,
+                            target_period=target_period,
                         )
                         if movie_year
                         else 0.0
@@ -408,6 +419,7 @@ async def get_recommendation(
                             ),  # Use popularity as proxy
                             max_count=MAX_SONG_POPULARITY,
                             use_linear=True,  # Spotify popularity is already 0-100 normalized
+                            target_period=target_period,
                         )
                         if song_year
                         else 0.0

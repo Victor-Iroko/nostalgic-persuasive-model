@@ -33,7 +33,6 @@ const emit = defineEmits<{
 const isControl = computed(() => props.experimentGroup === 'control')
 
 const cardTitle = computed(() => (isControl.value ? 'Daily Discovery' : 'Nostalgic Pick'))
-const themeColor = computed(() => (isControl.value ? 'blue' : 'amber'))
 
 // Dynamic classes
 const headerIconClass = computed(() => (isControl.value ? 'text-blue-500' : 'text-amber-500'))

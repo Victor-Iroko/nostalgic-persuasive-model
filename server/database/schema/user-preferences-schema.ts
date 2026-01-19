@@ -25,6 +25,8 @@ export const userPreferences = pgTable(
     birthYear: integer('birth_year'),
     experimentGroup: experimentGroupEnum('experiment_group').notNull().default('treatment'),
     habitType: habitTypeEnum('habit_type').notNull(),
+    nostalgicPeriodStart: integer('nostalgic_period_start'),
+    nostalgicPeriodEnd: integer('nostalgic_period_end'),
     selectedMovieIds: jsonb('selected_movie_ids').$type<number[]>().default([]),
     selectedSongIds: jsonb('selected_song_ids').$type<string[]>().default([]),
     researchConsent: boolean('research_consent').default(false).notNull(),

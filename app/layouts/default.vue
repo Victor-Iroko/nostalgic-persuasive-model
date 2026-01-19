@@ -43,6 +43,17 @@ const links = [
           </div>
 
           <div class="flex items-center gap-2">
+            <!-- Mobile Navigation -->
+            <UButton
+              v-for="link in links"
+              :key="link.to"
+              :to="link.to"
+              variant="ghost"
+              color="neutral"
+              :icon="link.icon"
+              class="md:hidden"
+            />
+
             <UButton
               to="/logout"
               variant="ghost"

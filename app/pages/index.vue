@@ -113,11 +113,6 @@ const needsOnboarding = computed(() => {
 
 // Habit type for display
 const habitType = computed(() => prefsData.value?.preferences?.habitType ?? 'exercise')
-
-// Check if user is in treatment group (nostalgia recommendations)
-const isTreatmentGroup = computed(
-  () => prefsData.value?.preferences?.experimentGroup === 'treatment'
-)
 </script>
 
 <template>

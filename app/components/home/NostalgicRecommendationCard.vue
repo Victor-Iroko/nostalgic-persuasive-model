@@ -22,11 +22,27 @@ type Recommendation = {
 
 const props = defineProps<{
   loading?: boolean
+  experimentGroup?: 'treatment' | 'control'
 }>()
 
 const emit = defineEmits<{
   refresh: []
 }>()
+
+// Computed styles based on group
+const isControl = computed(() => props.experimentGroup === 'control')
+
+const cardTitle = computed(() => (isControl.value ? 'Daily Discovery' : 'Nostalgic Pick'))
+const themeColor = computed(() => (isControl.value ? 'blue' : 'amber'))
+
+// Dynamic classes
+const headerIconClass = computed(() => (isControl.value ? 'text-blue-500' : 'text-amber-500'))
+const iconBgClass = computed(() =>
+  isControl.value ? 'from-blue-500/20 to-indigo-500/20' : 'from-amber-500/20 to-orange-500/20'
+)
+const mainIconClass = computed(() => (isControl.value ? 'text-blue-600' : 'text-amber-600'))
+const labelClass = computed(() => (isControl.value ? 'text-blue-600' : 'text-amber-600'))
+const cardClass = computed(() => (isControl.value ? 'control-card' : 'nostalgic-card'))
 
 // Fetch recommendation
 const {
@@ -105,12 +121,12 @@ const displayInfo = computed(() => {
 </script>
 
 <template>
-  <UCard class="nostalgic-card overflow-hidden">
+  <UCard class="overflow-hidden" :class="cardClass">
     <template #header>
       <div class="flex items-center justify-between gap-2">
         <div class="flex items-center gap-2">
-          <UIcon name="i-lucide-sparkles" class="shrink-0 text-amber-500" />
-          <h3 class="font-semibold whitespace-nowrap">Nostalgic Pick</h3>
+          <UIcon name="i-lucide-sparkles" class="shrink-0" :class="headerIconClass" />
+          <h3 class="font-semibold whitespace-nowrap">{{ cardTitle }}</h3>
         </div>
         <UButton
           color="neutral"
@@ -135,12 +151,13 @@ const displayInfo = computed(() => {
     <div v-else-if="displayInfo" class="space-y-4">
       <div class="flex items-start gap-4">
         <div
-          class="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-amber-500/20 to-orange-500/20"
+          class="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br"
+          :class="iconBgClass"
         >
-          <UIcon :name="displayInfo.icon" class="text-3xl text-amber-600" />
+          <UIcon :name="displayInfo.icon" class="text-3xl" :class="mainIconClass" />
         </div>
         <div class="min-w-0 flex-1">
-          <p class="mb-1 text-xs font-medium tracking-wide text-amber-600 uppercase">
+          <p class="mb-1 text-xs font-medium tracking-wide uppercase" :class="labelClass">
             {{ displayInfo.type === 'song' ? '🎵 Song' : '🎬 Movie' }}
             <span v-if="displayInfo.year" class="text-muted"> • {{ displayInfo.year }}</span>
           </p>
@@ -209,5 +226,8 @@ const displayInfo = computed(() => {
 <style scoped>
 .nostalgic-card {
   background: linear-gradient(135deg, rgba(251, 191, 36, 0.05), rgba(249, 115, 22, 0.05));
+}
+.control-card {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.05), rgba(99, 102, 241, 0.05));
 }
 </style>

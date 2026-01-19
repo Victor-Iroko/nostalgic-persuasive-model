@@ -2,12 +2,12 @@
 Song Recommendation API - Content-Based Filtering
 
 This module provides song recommendations using content-based filtering.
-It generates feature vectors for input songs and queries pgvector for 
+It generates feature vectors for input songs and queries pgvector for
 similar songs in the database.
 
 Usage:
     from recommend_songs import SongRecommender
-    
+
     recommender = SongRecommender()
     recommendations = recommender.recommend(
         liked_song_ids=["spotify_id_1", "spotify_id_2"],
@@ -37,7 +37,9 @@ ENV_FILE = PROJECT_ROOT / ".env"
 load_dotenv(ENV_FILE)
 
 # Database configuration
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/myapp")
+DATABASE_URL = os.getenv(
+    "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/myapp"
+)
 
 # Audio features used for similarity
 AUDIO_FEATURES = [
@@ -61,11 +63,11 @@ TARGET_DIM = 128
 class SongRecommender:
     """
     Song recommender using content-based filtering with pgvector.
-    
+
     This class loads the trained transformers and provides recommendations
     by querying the song_vectors table in PostgreSQL using pgvector similarity search.
     """
-    
+
     def __init__(
         self,
         models_dir: Optional[Path] = None,
@@ -73,39 +75,47 @@ class SongRecommender:
     ) -> None:
         """
         Initialize the recommender by loading transformers and connecting to database.
-        
+
         Args:
             models_dir: Path to the directory containing model files.
             database_url: PostgreSQL connection string.
         """
         self.models_dir = models_dir or MODELS_DIR
         self.database_url = database_url or DATABASE_URL
-        
+
         # Database connection (lazy initialization)
         self._conn: Optional[psycopg2.extensions.connection] = None
-        
+
         # Load transformers
         repo_id = os.getenv("HF_REPO_ID")
-        
+
         if repo_id:
-            print(f"Loading song feature transformers from Hugging Face Hub: {repo_id}...")
+            print(
+                f"Loading song feature transformers from Hugging Face Hub: {repo_id}..."
+            )
             try:
                 from huggingface_hub import hf_hub_download
-                
+
                 # Download and load audio_scaler.joblib
-                scaler_path = hf_hub_download(repo_id=repo_id, filename="song_recommender/audio_scaler.joblib")
+                scaler_path = hf_hub_download(
+                    repo_id=repo_id, filename="song_recommender/audio_scaler.joblib"
+                )
                 self.audio_scaler: StandardScaler = joblib.load(scaler_path)
-                
+
                 # Download and load genre_encoder.joblib
-                encoder_path = hf_hub_download(repo_id=repo_id, filename="song_recommender/genre_encoder.joblib")
+                encoder_path = hf_hub_download(
+                    repo_id=repo_id, filename="song_recommender/genre_encoder.joblib"
+                )
                 self.genre_encoder: OneHotEncoder = joblib.load(encoder_path)
-                
+
                 # Download and load tfidf_vectorizer.joblib
-                tfidf_path = hf_hub_download(repo_id=repo_id, filename="song_recommender/tfidf_vectorizer.joblib")
+                tfidf_path = hf_hub_download(
+                    repo_id=repo_id, filename="song_recommender/tfidf_vectorizer.joblib"
+                )
                 self.tfidf_vectorizer: TfidfVectorizer = joblib.load(tfidf_path)
-                
+
                 print("✓ Song transformers downloaded and loaded from HF Hub")
-                
+
             except Exception as e:
                 print(f"⚠ Failed to load from HF Hub: {e}")
                 print("Falling back to local models...")
@@ -113,7 +123,7 @@ class SongRecommender:
         else:
             print("HF_REPO_ID not set. Loading from local directory...")
             self._load_local_transformers()
-            
+
     def _load_local_transformers(self) -> None:
         """Helper to load transformers from local directory."""
         print(f"Loading song feature transformers from {self.models_dir}...")
@@ -126,40 +136,38 @@ class SongRecommender:
         self.tfidf_vectorizer: TfidfVectorizer = joblib.load(
             self.models_dir / "tfidf_vectorizer.joblib"
         )
-        
+
         # Database connection (lazy initialization)
         if self._conn is None:
-             self._conn: Optional[psycopg2.extensions.connection] = None
-        
+            self._conn: Optional[psycopg2.extensions.connection] = None
+
         print("Song recommender initialized!")
-    
+
     def _get_connection(self) -> psycopg2.extensions.connection:
         """Get or create database connection."""
         if self._conn is None or self._conn.closed:
             self._conn = psycopg2.connect(self.database_url)
         return self._conn
-    
+
     def close(self) -> None:
         """Close the database connection."""
         if self._conn and not self._conn.closed:
             self._conn.close()
-    
+
     def _create_embedding(self, song_data: dict) -> np.ndarray:
         """
         Create a feature embedding for a single song.
-        
+
         Args:
             song_data: Dictionary with song attributes
-            
+
         Returns:
             Normalized feature vector
         """
         # 1. Audio features
-        audio_features = np.array([[
-            song_data.get(f, 0.0) for f in AUDIO_FEATURES
-        ]])
+        audio_features = np.array([[song_data.get(f, 0.0) for f in AUDIO_FEATURES]])
         audio_scaled = self.audio_scaler.transform(audio_features)
-        
+
         # 2. Genre encoding
         genre = song_data.get("genre", "Unknown")
         try:
@@ -167,7 +175,7 @@ class SongRecommender:
         except ValueError:
             # Unknown genre - use zeros
             genre_encoded = np.zeros((1, len(self.genre_encoder.categories_[0])))
-        
+
         # 3. TF-IDF for niche genres
         niche_genres = song_data.get("niche_genres", [])
         if isinstance(niche_genres, str):
@@ -177,19 +185,21 @@ class SongRecommender:
                 niche_genres = []
         genres_text = " ".join(niche_genres) if niche_genres else ""
         tfidf_features = self.tfidf_vectorizer.transform([genres_text]).toarray()
-        
+
         # 4. Year (normalized - using approximate mean/std from training)
         year = song_data.get("year", 2000)
         year_normalized = np.array([[(year - 2000) / 20]])  # Approx normalization
-        
+
         # 5. Combine with weights (same as training)
-        combined = np.hstack([
-            audio_scaled * 1.5,
-            genre_encoded * 1.5,
-            tfidf_features * 1.0,
-            year_normalized * 2.0,
-        ])
-        
+        combined = np.hstack(
+            [
+                audio_scaled * 1.5,
+                genre_encoded * 1.5,
+                tfidf_features * 1.0,
+                year_normalized * 2.0,
+            ]
+        )
+
         # 6. Truncate or pad to target dimension
         current_dim = combined.shape[1]
         if current_dim > TARGET_DIM:
@@ -199,37 +209,40 @@ class SongRecommender:
             vector = np.hstack([combined, padding])
         else:
             vector = combined
-        
+
         # 7. Normalize
         norm = np.linalg.norm(vector)
         vector = vector / (norm + 1e-8)
-        
+
         return vector.flatten().astype(np.float32)
-    
+
     def get_song_info(self, spotify_id: str) -> Optional[dict]:
         """
         Get information about a specific song from the database.
-        
+
         Args:
             spotify_id: Spotify ID of the song
-            
+
         Returns:
             Dictionary with song information or None if not found
         """
         conn = self._get_connection()
         cursor = conn.cursor()
-        
-        cursor.execute("""
+
+        cursor.execute(
+            """
             SELECT id, name, artists, genre, year, danceability, energy, 
                    key, loudness, mode, speechiness, acousticness,
                    instrumentalness, liveness, valence, tempo, niche_genres
             FROM songs
             WHERE id = %s;
-        """, (spotify_id,))
-        
+        """,
+            (spotify_id,),
+        )
+
         row = cursor.fetchone()
         cursor.close()
-        
+
         if row:
             return {
                 "id": row[0],
@@ -251,7 +264,7 @@ class SongRecommender:
                 "niche_genres": row[16],
             }
         return None
-    
+
     def recommend_by_id(
         self,
         spotify_id: str,
@@ -260,19 +273,20 @@ class SongRecommender:
         """
         Get recommendations for a song that exists in the database.
         Uses the pre-computed embedding stored in pgvector.
-        
+
         Args:
             spotify_id: Spotify ID of the query song
             n_recommendations: Number of recommendations
-            
+
         Returns:
             DataFrame with recommended songs
         """
         conn = self._get_connection()
         cursor = conn.cursor()
-        
+
         # Query similar songs using pgvector with duplicate filtering
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT id, name, artists, genre, year, similarity FROM (
                 SELECT DISTINCT ON (LOWER(SPLIT_PART(s.name, ' - ', 1)))
                        s.id, s.name, s.artists, s.genre, s.year,
@@ -286,24 +300,28 @@ class SongRecommender:
             ) sub
             ORDER BY distance
             LIMIT %s;
-        """, (spotify_id, spotify_id, spotify_id, spotify_id, n_recommendations))
-        
+        """,
+            (spotify_id, spotify_id, spotify_id, spotify_id, n_recommendations),
+        )
+
         rows = cursor.fetchall()
         cursor.close()
-        
+
         results = []
         for row in rows:
-            results.append({
-                "spotify_id": row[0],
-                "name": row[1],
-                "artists": row[2],
-                "genre": row[3],
-                "year": row[4],
-                "similarity": float(row[5]) if row[5] else 0.0,
-            })
-        
+            results.append(
+                {
+                    "spotify_id": row[0],
+                    "name": row[1],
+                    "artists": row[2],
+                    "genre": row[3],
+                    "year": row[4],
+                    "similarity": float(row[5]) if row[5] else 0.0,
+                }
+            )
+
         return pd.DataFrame(results)
-    
+
     def recommend(
         self,
         liked_items: list[dict],
@@ -312,48 +330,55 @@ class SongRecommender:
         min_years_old: int = 10,
     ) -> pd.DataFrame:
         """
-        Get recommendations based on a list of songs the user likes, 
+        Get recommendations based on a list of songs the user likes,
         weighted by recency.
-        
+
         Args:
             liked_items: List of dicts with {"spotify_id": str, "timestamp": datetime}
                          (timestamp is optional, defaults to now)
             n_recommendations: Number of recommendations
             exclude_liked: Whether to exclude liked songs from results
-            
+
         Returns:
             DataFrame with recommended songs
         """
         conn = self._get_connection()
         cursor = conn.cursor()
-        
+
         if not liked_items:
             # Fallback for empty history
-            return self._get_random_recommendations(n_recommendations, min_years_old=min_years_old)
+            return self._get_random_recommendations(
+                n_recommendations, min_years_old=min_years_old
+            )
 
         liked_ids = [item["spotify_id"] for item in liked_items]
-        
+
         # Get embeddings for liked songs
         placeholders = ",".join(["%s"] * len(liked_ids))
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             SELECT spotify_id, embedding
             FROM song_vectors
             WHERE spotify_id IN ({placeholders});
-        """, liked_ids)
-        
+        """,
+            liked_ids,
+        )
+
         rows = cursor.fetchall()
-        
+
         if not rows:
             print("Warning: None of the provided song IDs were found in the database.")
             cursor.close()
             return pd.DataFrame()
-        
+
         # Map IDs to embeddings
         id_to_embedding = {}
         for row in rows:
             embedding_str = row[1]
             if isinstance(embedding_str, str):
-                embedding = np.array([float(x) for x in embedding_str.strip("[]").split(",")])
+                embedding = np.array(
+                    [float(x) for x in embedding_str.strip("[]").split(",")]
+                )
             else:
                 embedding = np.array(embedding_str)
             id_to_embedding[row[0]] = embedding
@@ -361,15 +386,16 @@ class SongRecommender:
         # Calculate weighted average
         embeddings = []
         weights = []
-        
+
         import datetime
+
         now = datetime.datetime.now()
-        
+
         for item in liked_items:
             spotify_id = item["spotify_id"]
             if spotify_id in id_to_embedding:
                 embeddings.append(id_to_embedding[spotify_id])
-                
+
                 # Calculate weight based on recency
                 # Formula: 1 / (1 + 0.1 * days_old)
                 # Max weight = 1.0 (today), Min floor = 0.2
@@ -380,54 +406,60 @@ class SongRecommender:
                             timestamp = datetime.datetime.fromisoformat(timestamp)
                         except ValueError:
                             timestamp = now
-                    
+
                     delta = now - timestamp
                     days = max(0, delta.days)
                     weight = 1.0 / (1.0 + 0.1 * days)
                     weight = max(weight, 0.2)  # Safety floor
                 else:
                     weight = 0.5  # Default for unknown time (legacy data)
-                
+
                 weights.append(weight)
 
         if not embeddings:
             return pd.DataFrame()
-            
+
         # Weighted Average
         avg_embedding = np.average(embeddings, axis=0, weights=weights)
-        
+
         # Normalize
         norm = np.linalg.norm(avg_embedding)
         avg_embedding = avg_embedding / (norm + 1e-8)
-        
+
         # Format for pgvector query
         embedding_str = f"[{','.join(map(str, avg_embedding.tolist()))}]"
-        
+
         results = []
-        
+
         # Standard Similarity Search (with nostalgia filter: min 10 years old)
         import datetime
+
         max_year = datetime.datetime.now().year - min_years_old
-        
+
         # Prepare placeholders for NOT IN clause
-        liked_ids = [item["spotify_id"] for item in liked_items if item["spotify_id"] in id_to_embedding]
+        liked_ids = [
+            item["spotify_id"]
+            for item in liked_items
+            if item["spotify_id"] in id_to_embedding
+        ]
         placeholders_str = ",".join(["%s"] * len(liked_ids))
-        
+
         if not placeholders_str:
-             placeholders_str = "''" # Handle empty case safely
-        
+            placeholders_str = "''"  # Handle empty case safely
+
         # Fetch 50x candidates to account for year filtering (Hybrid Search issue)
         # Vector index finds nearest neighbors (mostly recent), so we need to fetch MANY
         # to find the few old ones that are similar.
         fetch_limit = n_recommendations * 50
-        
+
         # Optimize vector search parameters for filtered search (Recall vs Speed)
         # We need VERY aggressive search because most neighbors are recent (filtered out)
         # Max value for hnsw.ef_search is 1000
         cursor.execute("SET hnsw.ef_search = 1000")
         cursor.execute("SET ivfflat.probes = 50")
-        
-        cursor.execute(f"""
+
+        cursor.execute(
+            f"""
             SELECT id, name, artists, genre, year, popularity, similarity FROM (
                 SELECT DISTINCT ON (LOWER(SPLIT_PART(s.name, ' - ', 1)))
                        s.id, s.name, s.artists, s.genre, s.year, s.popularity,
@@ -443,22 +475,28 @@ class SongRecommender:
             ) sub
             ORDER BY distance
             LIMIT %s;
-        """, [embedding_str, embedding_str] + liked_ids + [max_year, embedding_str, fetch_limit])
-        
+        """,
+            [embedding_str, embedding_str]
+            + liked_ids
+            + [max_year, embedding_str, fetch_limit],
+        )
+
         rows = cursor.fetchall()
         for row in rows:
-            results.append({
-                "spotify_id": row[0],
-                "name": row[1],
-                "artists": row[2],
-                "genre": row[3],
-                "year": row[4],
-                "popularity": row[5] or 50,
-                "similarity": float(row[6]) if row[6] else 0.0,
-                "score": float(row[6]) if row[6] else 0.0,  # Alias for similarity
-                "strategy": "similarity"
-            })
-            
+            results.append(
+                {
+                    "spotify_id": row[0],
+                    "name": row[1],
+                    "artists": row[2],
+                    "genre": row[3],
+                    "year": row[4],
+                    "popularity": row[5] or 50,
+                    "similarity": float(row[6]) if row[6] else 0.0,
+                    "score": float(row[6]) if row[6] else 0.0,  # Alias for similarity
+                    "strategy": "similarity",
+                }
+            )
+
         # Fallback: If we didn't find enough candidates via vector search (due to year filtering)
         # Fill with popular old songs from the same genres
         if len(results) < n_recommendations:
@@ -468,24 +506,25 @@ class SongRecommender:
             for item in liked_items:
                 if "genre" in item and item["genre"]:
                     liked_genres.add(item["genre"])
-            
+
             # If no genres, pick some popular ones
             if not liked_genres:
-                liked_genres = {'pop', 'rock', 'hip hop', 'r&b'}
-                
+                liked_genres = {"pop", "rock", "hip hop", "r&b"}
+
             genre_placeholders = ",".join(["%s"] * len(liked_genres))
-            
+
             # Query popular old songs in these genres
             # Don't duplicate existing results
             existing_ids = [r["spotify_id"] for r in results] + liked_ids
             existing_placeholders = ",".join(["%s"] * len(existing_ids))
-            
+
             if not existing_placeholders:
                 existing_placeholders = "''"
-                
+
             params = list(liked_genres) + existing_ids + [max_year, needed]
-            
-            cursor.execute(f"""
+
+            cursor.execute(
+                f"""
                 SELECT id, name, artists, genre, year, popularity
                 FROM songs
                 WHERE genre IN ({genre_placeholders})
@@ -493,35 +532,51 @@ class SongRecommender:
                   AND year <= %s
                 ORDER BY popularity DESC
                 LIMIT %s;
-            """, params)
-            
+            """,
+                params,
+            )
+
             fallback_rows = cursor.fetchall()
             for row in fallback_rows:
-                results.append({
-                    "spotify_id": row[0],
-                    "name": row[1],
-                    "artists": row[2],
-                    "genre": row[3],
-                    "year": row[4],
-                    "popularity": row[5] or 50,
-                    "similarity": 0.5, # Lower score for fallback
-                    "score": 0.5,
-                    "strategy": "fallback_genre"
-                })
+                results.append(
+                    {
+                        "spotify_id": row[0],
+                        "name": row[1],
+                        "artists": row[2],
+                        "genre": row[3],
+                        "year": row[4],
+                        "popularity": row[5] or 50,
+                        "similarity": 0.5,  # Lower score for fallback
+                        "score": 0.5,
+                        "strategy": "fallback_genre",
+                    }
+                )
 
         cursor.close()
         # Return only requested number (we fetched extra for filtering buffer)
         return pd.DataFrame(results[:n_recommendations])
 
-    def _get_random_recommendations(self, n: int, min_years_old: int = 10) -> pd.DataFrame:
+    def get_random_recommendations(
+        self, n: int = 10, min_years_old: int = 10
+    ) -> pd.DataFrame:
+        """
+        Get random song recommendations.
+        Public wrapper for _get_random_recommendations.
+        """
+        return self._get_random_recommendations(n, min_years_old)
+
+    def _get_random_recommendations(
+        self, n: int, min_years_old: int = 10
+    ) -> pd.DataFrame:
         """Fallback for cold start."""
         conn = self._get_connection()
         cursor = conn.cursor()
-        
+
         # Calculate max year
         import datetime
+
         max_year = datetime.datetime.now().year - min_years_old
-        
+
         cursor.execute(f"""
             SELECT id, name, artists, genre, year 
             FROM songs 
@@ -531,52 +586,70 @@ class SongRecommender:
         """)
         rows = cursor.fetchall()
         cursor.close()
-        return pd.DataFrame([{
-            "spotify_id": r[0], "name": r[1], "artists": r[2], 
-            "genre": r[3], "year": r[4], "similarity": 0.0, "strategy": "random"
-        } for r in rows])
-    
-    def search_songs(self, query: str, limit: int = 10, min_years_old: int = 0) -> pd.DataFrame:
+        return pd.DataFrame(
+            [
+                {
+                    "spotify_id": r[0],
+                    "name": r[1],
+                    "artists": r[2],
+                    "genre": r[3],
+                    "year": r[4],
+                    "similarity": 0.0,
+                    "strategy": "random",
+                }
+                for r in rows
+            ]
+        )
+
+    def search_songs(
+        self, query: str, limit: int = 10, min_years_old: int = 0
+    ) -> pd.DataFrame:
         """
         Search for songs by name or artist.
-        
+
         Args:
             query: Search query (case-insensitive)
             limit: Maximum number of results
             min_years_old: Minimum age of song in years
-            
+
         Returns:
             DataFrame with matching songs
         """
         conn = self._get_connection()
         cursor = conn.cursor()
-        
+
         # Calculate max year
         import datetime
+
         current_year = datetime.date.today().year
         max_year = current_year - min_years_old
-        
-        cursor.execute("""
+
+        cursor.execute(
+            """
             SELECT id, name, artists, genre, year
             FROM songs
             WHERE (LOWER(name::text) LIKE %s OR LOWER(artists::text) LIKE %s)
             AND year <= %s
             LIMIT %s;
-        """, (f"%{query.lower()}%", f"%{query.lower()}%", max_year, limit))
-        
+        """,
+            (f"%{query.lower()}%", f"%{query.lower()}%", max_year, limit),
+        )
+
         rows = cursor.fetchall()
         cursor.close()
-        
+
         results = []
         for row in rows:
-            results.append({
-                "spotify_id": row[0],
-                "name": row[1],
-                "artists": row[2],
-                "genre": row[3],
-                "year": row[4],
-            })
-        
+            results.append(
+                {
+                    "spotify_id": row[0],
+                    "name": row[1],
+                    "artists": row[2],
+                    "genre": row[3],
+                    "year": row[4],
+                }
+            )
+
         return pd.DataFrame(results)
 
 
@@ -585,33 +658,35 @@ if __name__ == "__main__":
     print("=" * 60)
     print("Song Recommendation System - Demo")
     print("=" * 60)
-    
+
     try:
         # Initialize recommender
         recommender = SongRecommender()
-        
+
         # Search for a song
         print("\nSearching for 'Beatles'...")
         search_results = recommender.search_songs("Beatles", limit=5)
         print(search_results)
-        
+
         if not search_results.empty:
             # Get recommendations for the first result
             song_id = search_results.iloc[0]["spotify_id"]
             song_name = search_results.iloc[0]["name"]
-            
+
             print(f"\nGetting recommendations for: {song_name}")
             recommendations = recommender.recommend_by_id(song_id, n_recommendations=10)
-            
+
             print("\nTop 10 Recommendations:")
             print("-" * 60)
             for i, row in recommendations.iterrows():
-                print(f"{i+1}. {row['name']} - {row['artists']}")
-                print(f"   Genre: {row['genre']} | Year: {row['year']} | Similarity: {row['similarity']:.3f}")
+                print(f"{i + 1}. {row['name']} - {row['artists']}")
+                print(
+                    f"   Genre: {row['genre']} | Year: {row['year']} | Similarity: {row['similarity']:.3f}"
+                )
                 print()
-        
+
         recommender.close()
-        
+
     except Exception as e:
         print(f"Error: {e}")
         print("\nMake sure:")

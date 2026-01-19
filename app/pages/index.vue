@@ -143,8 +143,8 @@ const isTreatmentGroup = computed(
         </p>
       </div>
 
-      <!-- Top Row: Today Status + Recommendation (treatment only) -->
-      <div class="grid gap-6" :class="isTreatmentGroup ? 'lg:grid-cols-2' : ''">
+      <!-- Top Row: Today Status + Recommendation -->
+      <div class="grid gap-6 lg:grid-cols-2">
         <!-- Today's Status -->
         <HomeTodayStatus
           :habit-type="habitType"
@@ -152,10 +152,10 @@ const isTreatmentGroup = computed(
           @log-today="handleLogToday"
         />
 
-        <!-- Nostalgic Recommendation - Only for treatment group -->
+        <!-- Recommendation Card (Both Treatment & Control) -->
         <HomeNostalgicRecommendationCard
-          v-if="isTreatmentGroup"
           :loading="prefsStatus === 'pending'"
+          :experiment-group="prefsData?.preferences?.experimentGroup"
         />
       </div>
 

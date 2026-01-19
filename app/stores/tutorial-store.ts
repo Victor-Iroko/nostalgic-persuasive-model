@@ -7,7 +7,7 @@ interface TutorialStep {
   highlightPadding: number
 }
 
-export const tutorialSteps: TutorialStep[] = [
+const treatmentSteps: TutorialStep[] = [
   {
     id: 'welcome',
     targetSelector: '[data-tutorial="app-header"]',
@@ -88,12 +88,93 @@ export const tutorialSteps: TutorialStep[] = [
   },
 ]
 
+const controlSteps: TutorialStep[] = [
+  {
+    id: 'welcome',
+    targetSelector: '[data-tutorial="app-header"]',
+    title: 'Welcome to Your Habit Journey',
+    description:
+      'This application helps you build healthier habits through daily tracking and insights. Let us show you around!',
+    position: 'bottom',
+    highlightPadding: 20,
+  },
+  {
+    id: 'today-status',
+    targetSelector: '[data-tutorial="today-status"]',
+    title: "Today's Goal",
+    description:
+      'Track your daily habit progress here. Log your completion and write a short journal entry.',
+    position: 'right',
+    highlightPadding: 16,
+  },
+  {
+    id: 'recommendation',
+    targetSelector: '[data-tutorial="recommendation-card"]',
+    title: 'Daily Content',
+    description:
+      'Enjoy a new song or movie recommendation each day. Rate them to help us improve suggestions.',
+    position: 'left',
+    highlightPadding: 16,
+  },
+  {
+    id: 'refresh-button',
+    targetSelector: '[data-tutorial="refresh-button"]',
+    title: 'Get a New Pick',
+    description: "Not feeling this recommendation? Click 'New Pick' to get a different one.",
+    position: 'bottom',
+    highlightPadding: 8,
+  },
+  {
+    id: 'open-content',
+    targetSelector: '[data-tutorial="open-content-button"]',
+    title: 'Enjoy the Content',
+    description: 'Click to open the song on Spotify or search for the movie trailer on YouTube.',
+    position: 'top',
+    highlightPadding: 8,
+  },
+  {
+    id: 'feedback',
+    targetSelector: '[data-tutorial="feedback-buttons"]',
+    title: 'Help Us Improve',
+    description:
+      'Tell us if you enjoyed this content. Your feedback helps us recommend better picks!',
+    position: 'top',
+    highlightPadding: 8,
+  },
+  {
+    id: 'calendar',
+    targetSelector: '[data-tutorial="habit-calendar"]',
+    title: 'Habit Calendar',
+    description: 'View your progress over time. Consistent logging builds lasting habits!',
+    position: 'top',
+    highlightPadding: 16,
+  },
+  {
+    id: 'charts',
+    targetSelector: '[data-tutorial="stress-chart"]',
+    title: 'Your Wellness Insights',
+    description: 'Track how your mood and stress levels change as you build your habit.',
+    position: 'left',
+    highlightPadding: 16,
+  },
+  {
+    id: 'complete',
+    targetSelector: '[data-tutorial="app-header"]',
+    title: "You're All Set!",
+    description:
+      'Start logging daily and watch your habits grow. Use the "Take Tour" button anytime to revisit this guide.',
+    position: 'bottom',
+    highlightPadding: 20,
+  },
+]
+
 interface TutorialState {
   isActive: boolean
   currentStepIndex: number
   hasCompletedTutorial: boolean
   hasSkippedTutorial: boolean
   isLoading: boolean
+  experimentGroup: 'treatment' | 'control'
 }
 
 export const useTutorialStore = defineStore('tutorial', {
@@ -103,17 +184,32 @@ export const useTutorialStore = defineStore('tutorial', {
     hasCompletedTutorial: false,
     hasSkippedTutorial: false,
     isLoading: false,
+    experimentGroup: 'treatment',
   }),
 
   getters: {
-    currentStep: (state): TutorialStep | undefined => tutorialSteps[state.currentStepIndex],
+    tutorialSteps(state): TutorialStep[] {
+      return state.experimentGroup === 'treatment' ? treatmentSteps : controlSteps
+    },
 
-    isLastStep: (state): boolean => state.currentStepIndex === tutorialSteps.length - 1,
+    currentStep(state): TutorialStep | undefined {
+      const steps = state.experimentGroup === 'treatment' ? treatmentSteps : controlSteps
+      return steps[state.currentStepIndex]
+    },
 
-    progress: (state): number => ((state.currentStepIndex + 1) / tutorialSteps.length) * 100,
+    isLastStep(state): boolean {
+      const steps = state.experimentGroup === 'treatment' ? treatmentSteps : controlSteps
+      return state.currentStepIndex === steps.length - 1
+    },
 
-    showTakeTourButton: (state): boolean =>
-      !state.isActive && !state.hasCompletedTutorial && !state.isLoading,
+    progress(state): number {
+      const steps = state.experimentGroup === 'treatment' ? treatmentSteps : controlSteps
+      return ((state.currentStepIndex + 1) / steps.length) * 100
+    },
+
+    showTakeTourButton(state): boolean {
+      return !state.isActive && !state.hasCompletedTutorial && !state.isLoading
+    },
   },
 
   actions: {
@@ -143,7 +239,8 @@ export const useTutorialStore = defineStore('tutorial', {
     },
 
     async nextStep() {
-      if (this.currentStepIndex < tutorialSteps.length - 1) {
+      const steps = this.experimentGroup === 'treatment' ? treatmentSteps : controlSteps
+      if (this.currentStepIndex < steps.length - 1) {
         this.currentStepIndex++
       } else {
         await this.completeTutorial()
@@ -157,7 +254,8 @@ export const useTutorialStore = defineStore('tutorial', {
     },
 
     async goToStep(index: number) {
-      if (index >= 0 && index < tutorialSteps.length) {
+      const steps = this.experimentGroup === 'treatment' ? treatmentSteps : controlSteps
+      if (index >= 0 && index < steps.length) {
         this.currentStepIndex = index
       }
     },

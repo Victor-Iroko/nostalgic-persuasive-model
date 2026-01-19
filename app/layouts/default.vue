@@ -55,6 +55,8 @@ const links = [
               class="md:hidden"
             />
 
+            <UColorModeButton />
+
             <UButton
               to="/logout"
               variant="ghost"

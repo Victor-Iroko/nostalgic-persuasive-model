@@ -42,6 +42,11 @@ if (tutorialData.value) {
   tutorialStore.hasSkippedTutorial = tutorialData.value.skipped
 }
 
+// Set experiment group for group-specific tutorial
+if (prefsData.value?.preferences?.experimentGroup) {
+  tutorialStore.experimentGroup = prefsData.value.preferences.experimentGroup
+}
+
 // Auto-start tutorial logic
 onMounted(() => {
   // Auto-start tutorial 2 seconds after onboarding completion

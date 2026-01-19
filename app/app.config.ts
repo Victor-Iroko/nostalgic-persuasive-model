@@ -5,5 +5,9 @@ export default defineAppConfig({
       secondary: 'purple',
       neutral: 'zinc',
     },
+    icons: {
+      light: 'i-lucide-sun',
+      dark: 'i-lucide-moon',
+    },
   },
 })

@@ -164,15 +164,15 @@ class LinUCBBandit:
         context_2d = self._ensure_context_shape(context)
         arm = self._get_arm_from_candidate(candidate)
 
-        # Convert reward to binary decision for simpler learning
+        # Use continuous reward directly
         decision = arm
-        binary_reward = 1 if reward > 0.5 else 0
+        # binary_reward = 1 if reward > 0.5 else 0  <-- REMOVED BINARIZATION
 
         if not self._is_fitted:
             # First fit
             self.mab.fit(
                 decisions=[decision],
-                rewards=[binary_reward],
+                rewards=[reward],  # Use continuous reward
                 contexts=context_2d,
             )
             self._is_fitted = True
@@ -180,7 +180,7 @@ class LinUCBBandit:
             # Incremental update
             self.mab.partial_fit(
                 decisions=[decision],
-                rewards=[binary_reward],
+                rewards=[reward],  # Use continuous reward
                 contexts=context_2d,
             )
 
@@ -557,20 +557,57 @@ def build_context_features(
 
 
 def calculate_reward(
-    brings_back_memories: bool,
-) -> float:
+    interaction_type: str = "feedback",
+    brings_back_memories: bool | None = None,
+    duration_seconds: int = 0,
+    feedback_submitted: bool = False,
+) -> float | None:
     """
-    Calculate reward from user feedback.
+    Calculate reward from user feedback and interaction signals.
+
+    Reward Hierarchy:
+    1. Explicit Feedback (Yes/No) - Overrides everything
+    2. Replay (1.0) - Strong positive
+    3. Click (0.8) - Positive interest
+    4. Passive View > 30s (0.6) - Mild interest (only if no explicit feedback)
+    5. Skip (0.0) - Negative
 
     Args:
-        brings_back_memories: Primary signal from user feedback.
+        interaction_type: Type of interaction (view, click, skip, next, replay, feedback)
+        brings_back_memories: Explicit feedback signal (if present)
+        duration_seconds: Duration of interaction
+        feedback_submitted: Whether explicit feedback was already submitted
 
     Returns:
-        Reward (0-1).
+        Reward (0-1) or None if interaction should be ignored
     """
-    # Simple binary reward for now
-    # Can be expanded to include other immediate signals like rating/like/share
-    return 1.0 if brings_back_memories else 0.0
+    # 1. Explicit Feedback (Gold Standard)
+    # If user explicitly answers "Yes" or "No", this is the definitive signal.
+    if brings_back_memories is not None:
+        return 1.0 if brings_back_memories else 0.0
+
+    # 2. Strong Implicit Signals
+    if interaction_type == "replay":
+        return 1.0
+
+    if interaction_type == "click":
+        return 0.8
+
+    # 3. Passive Engagement
+    # "next" implies they finished looking at it.
+    if interaction_type == "next":
+        # If they lingered > 30s and haven't already voted, count as mild positive.
+        # If they already voted, we ignore the "next" event to avoid double-counting or diluting.
+        if duration_seconds > 30 and not feedback_submitted:
+            return 0.6
+        return None
+
+    # 4. Negative Signals
+    if interaction_type == "skip":
+        return 0.0
+
+    # Ignore 'view' (just an impression) and other unknown types
+    return None
 
 
 # =============================================================================

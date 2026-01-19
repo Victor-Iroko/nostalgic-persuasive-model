@@ -48,7 +48,10 @@ const {
   data: recommendation,
   refresh,
   status,
-} = await useFetch<Recommendation>('/api/habits/recommendation', { lazy: true })
+} = await useFetch<Recommendation & { stress_score: number; emotion: { emotion: string } }>(
+  '/api/habits/recommendation',
+  { lazy: true }
+)
 
 const isLoading = computed(() => props.loading || status.value === 'pending')
 
@@ -115,6 +118,12 @@ async function logInteraction(
         ),
         interactionType: type,
         durationSeconds: type === 'view' ? 0 : duration,
+        feedbackSubmitted: feedbackSubmitted.value,
+
+        // Pass context snapshot for learning
+        contextStress: recommendation.value.stress_score,
+        contextEmotion: recommendation.value.emotion?.emotion,
+
         ...extras,
       },
     })
@@ -146,6 +155,9 @@ function sendExitLog() {
       ),
       interactionType: type,
       durationSeconds: duration,
+      feedbackSubmitted: feedbackSubmitted.value,
+      contextStress: recommendation.value.stress_score,
+      contextEmotion: recommendation.value.emotion?.emotion,
     }
 
     // Use sendBeacon for reliability during unload

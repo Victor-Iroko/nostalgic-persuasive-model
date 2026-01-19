@@ -7,7 +7,8 @@ validation and serialization.
 
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
+from pydantic.alias_generators import to_camel
 
 
 # =============================================================================
@@ -20,13 +21,17 @@ class MovieBase(BaseModel):
 
     movie_id: int = Field(..., description="MovieLens movieId")
     title: str = Field(..., description="Movie title")
-    genres: str = Field(..., description="Pipe-separated genres (e.g., 'Action|Comedy')")
+    genres: str = Field(
+        ..., description="Pipe-separated genres (e.g., 'Action|Comedy')"
+    )
 
 
 class MovieInfo(MovieBase):
     """Full movie information response."""
 
-    decade: Optional[str] = Field(None, description="Decade the movie was released (e.g., '1990s')")
+    decade: Optional[str] = Field(
+        None, description="Decade the movie was released (e.g., '1990s')"
+    )
 
 
 class MovieRecommendation(MovieInfo):
@@ -67,7 +72,9 @@ class MovieSearchRequest(BaseModel):
     """Request model for movie search."""
 
     query: str = Field(..., min_length=1, max_length=200, description="Search query")
-    limit: int = Field(default=10, ge=1, le=100, description="Maximum number of results")
+    limit: int = Field(
+        default=10, ge=1, le=100, description="Maximum number of results"
+    )
 
 
 class MovieSearchResponse(BaseModel):
@@ -100,16 +107,26 @@ class SongInfo(SongBase):
 class SongDetails(SongInfo):
     """Extended song information with audio features."""
 
-    danceability: Optional[float] = Field(None, ge=0, le=1, description="Danceability score")
+    danceability: Optional[float] = Field(
+        None, ge=0, le=1, description="Danceability score"
+    )
     energy: Optional[float] = Field(None, ge=0, le=1, description="Energy score")
     key: Optional[int] = Field(None, ge=0, le=11, description="Musical key (0-11)")
     loudness: Optional[float] = Field(None, description="Loudness in dB")
     mode: Optional[int] = Field(None, ge=0, le=1, description="Mode (0=minor, 1=major)")
-    speechiness: Optional[float] = Field(None, ge=0, le=1, description="Speechiness score")
-    acousticness: Optional[float] = Field(None, ge=0, le=1, description="Acousticness score")
-    instrumentalness: Optional[float] = Field(None, ge=0, le=1, description="Instrumentalness score")
+    speechiness: Optional[float] = Field(
+        None, ge=0, le=1, description="Speechiness score"
+    )
+    acousticness: Optional[float] = Field(
+        None, ge=0, le=1, description="Acousticness score"
+    )
+    instrumentalness: Optional[float] = Field(
+        None, ge=0, le=1, description="Instrumentalness score"
+    )
     liveness: Optional[float] = Field(None, ge=0, le=1, description="Liveness score")
-    valence: Optional[float] = Field(None, ge=0, le=1, description="Valence (happiness) score")
+    valence: Optional[float] = Field(
+        None, ge=0, le=1, description="Valence (happiness) score"
+    )
     tempo: Optional[float] = Field(None, ge=0, description="Tempo in BPM")
     niche_genres: Optional[str] = Field(None, description="Niche genre tags")
 
@@ -117,7 +134,9 @@ class SongDetails(SongInfo):
 class SongRecommendation(SongInfo):
     """Song recommendation with similarity score."""
 
-    similarity: float = Field(..., ge=0, le=1, description="Cosine similarity score (0-1)")
+    similarity: float = Field(
+        ..., ge=0, le=1, description="Cosine similarity score (0-1)"
+    )
 
 
 class SongRecommendRequest(BaseModel):
@@ -163,8 +182,15 @@ class SongRecommendResponse(BaseModel):
 class SongSearchRequest(BaseModel):
     """Request model for song search."""
 
-    query: str = Field(..., min_length=1, max_length=200, description="Search query for song name or artist")
-    limit: int = Field(default=10, ge=1, le=100, description="Maximum number of results")
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=200,
+        description="Search query for song name or artist",
+    )
+    limit: int = Field(
+        default=10, ge=1, le=100, description="Maximum number of results"
+    )
 
 
 class SongSearchResponse(BaseModel):
@@ -224,13 +250,13 @@ class TextAnalysisResponse(BaseModel):
 
 class AnalyzeRequest(BaseModel):
     """Request model for text analysis."""
-    
+
     text: str = Field(..., min_length=1, max_length=5000, description="Text to analyze")
 
 
 class AnalyzeResponse(BaseModel):
     """Response model for text analysis."""
-    
+
     stress_score: float = Field(..., ge=0, description="Stress level")
     emotion: EmotionResult = Field(..., description="Detected emotion")
 
@@ -271,7 +297,9 @@ class HealthCheckResponse(BaseModel):
     movie_model_loaded: bool = Field(..., description="Whether movie model is loaded")
     song_model_loaded: bool = Field(..., description="Whether song model is loaded")
     stress_model_loaded: bool = Field(..., description="Whether stress model is loaded")
-    emotion_model_loaded: bool = Field(..., description="Whether emotion model is loaded")
+    emotion_model_loaded: bool = Field(
+        ..., description="Whether emotion model is loaded"
+    )
     bandit_loaded: bool = Field(..., description="Whether bandit model is loaded")
     version: str = Field(..., description="API version")
 
@@ -296,17 +324,19 @@ class RecommendedContent(BaseModel):
     """Recommended content (either song or movie)."""
 
     type: str = Field(..., description="Content type: 'song' or 'movie'")
-    id: str = Field(..., description="Content ID (spotify_id for songs, movieId for movies)")
-    
+    id: str = Field(
+        ..., description="Content ID (spotify_id for songs, movieId for movies)"
+    )
+
     # Movie fields
     title: Optional[str] = Field(None, description="Movie title")
     genres: Optional[list[str]] = Field(None, description="Movie genres")
-    
+
     # Song fields
     name: Optional[str] = Field(None, description="Song name")
     artists: Optional[list[str]] = Field(None, description="Song artists")
     genre: Optional[str] = Field(None, description="Song genre")
-    
+
     # Common fields
     year: Optional[int] = Field(None, description="Release year")
 
@@ -323,14 +353,41 @@ class RecommendResponse(BaseModel):
 class RecommendFeedbackRequest(BaseModel):
     """Request model for recommendation feedback."""
 
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
     user_id: str = Field(..., description="User ID")
     content_type: str = Field(..., description="Content type: 'song' or 'movie'")
     content_id: str = Field(..., description="Content ID")
-    brings_back_memories: bool = Field(..., description="Primary feedback signal")
-    
+
+    # Interaction fields
+    interaction_type: str = Field(
+        default="feedback",
+        description="Type of interaction (feedback, view, click, skip, next, replay)",
+    )
+    duration_seconds: Optional[int] = Field(
+        None, description="Duration of interaction in seconds"
+    )
+    feedback_submitted: bool = Field(
+        default=False,
+        description="Whether explicit feedback has already been submitted for this session",
+    )
+
+    # Primary feedback signal (optional now, as implicit interactions might not have it)
+    brings_back_memories: Optional[bool] = Field(
+        None, description="Primary feedback signal"
+    )
+
     # Content metadata for bandit update
     content_year: Optional[int] = Field(None, description="Content year")
     content_genre: Optional[str] = Field(None, description="Content genre")
+
+    # Context snapshot (state at time of recommendation)
+    context_stress: Optional[float] = Field(
+        None, description="Stress score when recommendation was made"
+    )
+    context_emotion: Optional[str] = Field(
+        None, description="Emotion when recommendation was made"
+    )
 
 
 class RecommendFeedbackResponse(BaseModel):
@@ -351,4 +408,3 @@ class ErrorResponse(BaseModel):
 
     detail: str = Field(..., description="Error message")
     error_type: str = Field(default="error", description="Type of error")
-

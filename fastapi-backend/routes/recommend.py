@@ -636,15 +636,30 @@ async def submit_feedback(
 
     # Calculate reward
     reward = calculate_reward(
+        interaction_type=body.interaction_type,
         brings_back_memories=body.brings_back_memories,
+        duration_seconds=body.duration_seconds or 0,
+        feedback_submitted=body.feedback_submitted,
     )
 
-    # Context (Approximate)
+    if reward is None:
+        return RecommendFeedbackResponse(
+            success=True,  # Client call succeeded, we just didn't learn from it
+            reward=0.0,
+            message=f"Interaction '{body.interaction_type}' ignored (no reward signal).",
+        )
+
+    # Context (Prefer snapshot from request, fallback to approximate)
     recent_feedback = fetch_recent_feedback(body.user_id)
     user_positive_rate = calculate_user_positive_rate(recent_feedback)
+
+    # Use the context from when the recommendation was made, if provided
+    stress_context = body.context_stress if body.context_stress is not None else 0.5
+    emotion_context = body.context_emotion if body.context_emotion else "neutral"
+
     context = build_context_features(
-        stress_score=0.5,  # Neutral for update
-        emotion="neutral",
+        stress_score=stress_context,
+        emotion=emotion_context,
         user_positive_rate=user_positive_rate,
         birth_year=birth_year,
     )
@@ -663,7 +678,7 @@ async def submit_feedback(
     return RecommendFeedbackResponse(
         success=True,
         reward=reward,
-        message="Feedback recorded and bandit updated.",
+        message=f"Feedback recorded ({body.interaction_type}, r={reward}) and bandit updated.",
     )
 
 

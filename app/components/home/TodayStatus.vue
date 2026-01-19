@@ -60,7 +60,7 @@ const statusInfo = computed(() => {
 </script>
 
 <template>
-  <UCard>
+  <UCard data-tutorial="today-status">
     <!-- Mobile: Stack vertically, Desktop: Row -->
     <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <!-- Left: Icon + Text -->

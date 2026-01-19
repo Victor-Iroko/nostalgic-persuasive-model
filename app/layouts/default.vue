@@ -16,6 +16,7 @@ const links = [
 <template>
   <div class="min-h-screen bg-gray-50 dark:bg-gray-900">
     <header
+      data-tutorial="app-header"
       class="sticky top-0 z-50 w-full border-b border-gray-200 bg-white/75 backdrop-blur dark:border-gray-800 dark:bg-gray-900/75"
     >
       <UContainer>

@@ -86,7 +86,7 @@ const getEmotionEmoji = (emotion: string | null | undefined): string => {
 </script>
 
 <template>
-  <UCard class="w-full overflow-hidden">
+  <UCard data-tutorial="stress-chart" class="w-full overflow-hidden">
     <template #header>
       <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div class="flex items-center gap-2">

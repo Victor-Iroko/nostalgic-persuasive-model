@@ -109,6 +109,7 @@ async function logInteraction(
     // Nuxt/Fetch is usually fine unless the browser is aggressively killing processes
     await $fetch('/api/habits/feedback', {
       method: 'POST',
+      credentials: 'include',
       body: {
         contentType: recommendation.value.type,
         contentId: String(
@@ -183,7 +184,7 @@ useEventListener(typeof window !== 'undefined' ? window : null, 'pagehide', () =
 watch(
   recommendation,
   (newVal) => {
-    if (newVal) {
+    if (newVal && import.meta.client) {
       // Reset state for new content
       exitLogged.value = false
       // Small delay to ensure render
@@ -256,7 +257,7 @@ const displayInfo = computed(() => {
 </script>
 
 <template>
-  <UCard class="overflow-hidden" :class="cardClass">
+  <UCard data-tutorial="recommendation-card" class="overflow-hidden" :class="cardClass">
     <template #header>
       <div class="flex items-center justify-between gap-2">
         <div class="flex items-center gap-2">
@@ -264,6 +265,7 @@ const displayInfo = computed(() => {
           <h3 class="font-semibold whitespace-nowrap">{{ cardTitle }}</h3>
         </div>
         <UButton
+          data-tutorial="refresh-button"
           color="neutral"
           variant="ghost"
           size="xs"
@@ -302,6 +304,7 @@ const displayInfo = computed(() => {
 
           <div class="mt-4">
             <UButton
+              data-tutorial="open-content-button"
               size="sm"
               variant="soft"
               :color="isControl ? 'primary' : 'primary'"
@@ -318,7 +321,11 @@ const displayInfo = computed(() => {
       </div>
 
       <!-- Feedback Section -->
-      <div v-if="!feedbackSubmitted" class="border-t border-default pt-4">
+      <div
+        v-if="!feedbackSubmitted"
+        data-tutorial="feedback-buttons"
+        class="border-t border-default pt-4"
+      >
         <p class="mb-3 text-sm text-muted">Does this bring back any memories?</p>
         <div class="flex gap-2">
           <UButton

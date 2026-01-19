@@ -122,7 +122,7 @@ function getLogForDate(date: CalendarDate) {
 </script>
 
 <template>
-  <UCard class="habit-calendar">
+  <UCard data-tutorial="habit-calendar" class="habit-calendar">
     <template #header>
       <!-- Mobile: Stack, Desktop: Row -->
       <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

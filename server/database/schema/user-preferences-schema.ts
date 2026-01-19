@@ -31,6 +31,8 @@ export const userPreferences = pgTable(
     selectedSongIds: jsonb('selected_song_ids').$type<string[]>().default([]),
     researchConsent: boolean('research_consent').default(false).notNull(),
     onboardingCompletedAt: timestamp('onboarding_completed_at'),
+    tutorialCompletedAt: timestamp('tutorial_completed_at'),
+    tutorialSkippedAt: timestamp('tutorial_skipped_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()

@@ -6,6 +6,7 @@ definePageMeta({
 })
 
 const authStore = useAuthStore()
+const tutorialStore = useTutorialStore()
 
 interface HabitLog {
   id: string
@@ -30,6 +31,26 @@ const { data: prefsData, status: prefsStatus } = await useFetch<{
   preferences: Preferences | null
   onboardingComplete: boolean
 }>('/api/habits/preferences', { lazy: true })
+
+// Fetch tutorial status (SSR-friendly to prevent flickering)
+const { data: tutorialData } = await useFetch<{ completed: boolean; skipped: boolean }>(
+  '/api/tutorial/status'
+)
+
+if (tutorialData.value) {
+  tutorialStore.hasCompletedTutorial = tutorialData.value.completed
+  tutorialStore.hasSkippedTutorial = tutorialData.value.skipped
+}
+
+// Auto-start tutorial logic
+onMounted(() => {
+  // Auto-start tutorial 2 seconds after onboarding completion
+  if (!tutorialStore.hasCompletedTutorial && !tutorialStore.hasSkippedTutorial) {
+    setTimeout(() => {
+      tutorialStore.startTour()
+    }, 2000)
+  }
+})
 
 // Current month for logs
 const currentMonth = ref(formatMonth(today(getLocalTimeZone())))
@@ -177,6 +198,12 @@ const habitType = computed(() => prefsData.value?.preferences?.habitType ?? 'exe
         :loading="savingLog"
         @save="handleSaveLog"
       />
+
+      <!-- Tutorial Overlay -->
+      <TutorialOverlay v-if="tutorialStore.isActive" />
+
+      <!-- Take Tour Button -->
+      <TutorialTakeTourButton v-else-if="tutorialStore.showTakeTourButton" />
     </template>
   </UContainer>
 </template>

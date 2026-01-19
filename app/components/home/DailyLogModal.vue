@@ -196,7 +196,7 @@ const statusText = computed(() => {
               class="min-h-[150px] w-full resize-y rounded-xl border border-gray-200 bg-white p-4 text-sm leading-relaxed text-gray-900 placeholder-gray-400 transition-colors focus:border-blue-500 focus:outline-none dark:border-white/10 dark:bg-black/30 dark:text-white dark:placeholder-white/40"
               placeholder="Write about your day... What went well? Any challenges? How did you feel?"
               rows="6"
-            ></textarea>
+            />
 
             <!-- Read-only display -->
             <div

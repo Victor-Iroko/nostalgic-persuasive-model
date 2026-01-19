@@ -38,13 +38,20 @@ if os.path.exists("/dataset"):
     ENV_FILE = Path("/app/.env")
 else:
     # Local development
-    PROJECT_ROOT = Path(__file__).parent.parent
-    DATASET_PATH = PROJECT_ROOT / "dataset" / "550k Spotify Songs Audio, Lyrics & Genres" / "songs.csv"
+    PROJECT_ROOT = Path(__file__).parent.parent.parent
+    DATASET_PATH = (
+        PROJECT_ROOT
+        / "dataset"
+        / "550k Spotify Songs Audio, Lyrics & Genres"
+        / "songs.csv"
+    )
     MODELS_DIR = PROJECT_ROOT / "models" / "song_recommender"
     ENV_FILE = PROJECT_ROOT / ".env"
 
 load_dotenv(ENV_FILE)
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/myapp")
+DATABASE_URL = os.getenv(
+    "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/myapp"
+)
 
 BATCH_SIZE = 1000
 RANDOM_SEED = 42
@@ -64,8 +71,8 @@ ANCHOR_FEATURES = ["year", "genre"]
 # - Evaluated via tolerance bands, not exact similarity
 STYLE_AUDIO_FEATURES = [
     "danceability",
-    "energy", 
-    "valence",       # Musical positiveness
+    "energy",
+    "valence",  # Musical positiveness
     "tempo",
     "acousticness",
 ]
@@ -74,18 +81,18 @@ STYLE_AUDIO_FEATURES = [
 # - NOT used in embedding to avoid evaluation leakage
 # - Used in nostalgia-specific metrics
 EVALUATION_ONLY_FEATURES = [
-    "popularity",     # For persuasion metrics
-    "duration_ms",    # For era familiarity
-    "lyrics",         # For thematic overlap
-    "key",            # Excluded from embedding
-    "mode",           # Excluded from embedding
+    "popularity",  # For persuasion metrics
+    "duration_ms",  # For era familiarity
+    "lyrics",  # For thematic overlap
+    "key",  # Excluded from embedding
+    "mode",  # Excluded from embedding
 ]
 
 # Feature weights for embedding
 WEIGHTS = {
-    "year": 1.5,          # Important but not over-optimized
-    "genre": 1.2,         # Category anchor
-    "audio": 1.0,         # Sonic similarity
+    "year": 1.5,  # Important but not over-optimized
+    "genre": 1.2,  # Category anchor
+    "audio": 1.0,  # Sonic similarity
     "niche_genres": 0.8,  # Scene context
 }
 
@@ -93,6 +100,7 @@ WEIGHTS = {
 # =============================================================================
 # Database Functions
 # =============================================================================
+
 
 def connect_database() -> psycopg2.extensions.connection:
     """Connect to PostgreSQL."""
@@ -160,6 +168,7 @@ def insert_vectors_batch(
 # Data Loading and Preprocessing
 # =============================================================================
 
+
 def load_data(filepath: Path) -> pd.DataFrame:
     """Load the songs dataset from CSV."""
     print(f"Loading data from {filepath}...")
@@ -207,6 +216,7 @@ def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
 # Feature Engineering (Nostalgia-Focused)
 # =============================================================================
 
+
 def create_feature_vectors(
     df: pd.DataFrame,
     audio_scaler: StandardScaler,
@@ -217,7 +227,7 @@ def create_feature_vectors(
 ) -> np.ndarray:
     """
     Create feature vectors for content-based filtering.
-    
+
     IMPORTANT: Only includes anchor and style features.
     Evaluation-only features (popularity, duration, lyrics) are EXCLUDED.
     """
@@ -255,12 +265,14 @@ def create_feature_vectors(
     year_normalized = (years - years.mean()) / (years.std() + 1e-8)
 
     # 5. Combine with weights (evaluation-only features EXCLUDED)
-    combined_features = np.hstack([
-        audio_scaled * WEIGHTS["audio"],
-        genre_encoded * WEIGHTS["genre"],
-        tfidf_features * WEIGHTS["niche_genres"],
-        year_normalized * WEIGHTS["year"],
-    ])
+    combined_features = np.hstack(
+        [
+            audio_scaled * WEIGHTS["audio"],
+            genre_encoded * WEIGHTS["genre"],
+            tfidf_features * WEIGHTS["niche_genres"],
+            year_normalized * WEIGHTS["year"],
+        ]
+    )
 
     print(f"  Combined features shape: {combined_features.shape}")
 
@@ -287,6 +299,7 @@ def create_feature_vectors(
 # Model Persistence
 # =============================================================================
 
+
 def save_transformers(
     models_dir: Path,
     audio_scaler: StandardScaler,
@@ -300,7 +313,7 @@ def save_transformers(
     joblib.dump(audio_scaler, models_dir / "audio_scaler.joblib")
     joblib.dump(genre_encoder, models_dir / "genre_encoder.joblib")
     joblib.dump(tfidf_vectorizer, models_dir / "tfidf_vectorizer.joblib")
-    
+
     # Save training config
     config = {
         "target_dim": TARGET_DIM,
@@ -322,6 +335,7 @@ def save_transformers(
 # Main Training Pipeline
 # =============================================================================
 
+
 def main() -> None:
     """Main training pipeline."""
     print("=" * 60)
@@ -338,7 +352,9 @@ def main() -> None:
     valid_ids = get_valid_song_ids(conn)
     original_count = len(df)
     df = df[df["id"].isin(valid_ids)].reset_index(drop=True)
-    print(f"Filtered to {len(df):,} songs (from {original_count:,}) that exist in database")
+    print(
+        f"Filtered to {len(df):,} songs (from {original_count:,}) that exist in database"
+    )
 
     if len(df) == 0:
         print("ERROR: No matching songs found in database! Please seed songs first.")

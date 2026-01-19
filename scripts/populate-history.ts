@@ -19,7 +19,7 @@ async function main() {
 
   // 2. Generate 14 days of data
   const logsToInsert = []
-  const emotions = ['joy', 'sadness', 'anger', 'fear', 'love', 'surprise', 'neutral']
+  // const emotions = ['joy', 'sadness', 'anger', 'fear', 'love', 'surprise', 'neutral']
   const notes = [
     'Had a great workout today!',
     'Feeling a bit tired but pushed through.',
@@ -39,7 +39,7 @@ async function main() {
     // Create a trend: stress decreases over time (higher i = further back = higher stress)
     const baseStress = 0.3 + Math.random() * 0.2 // 0.3 - 0.5 base
     const stressTrend = (i / 14) * 0.4 // Add up to 0.4 for older entries
-    let stressLevel = Math.min(0.95, Math.max(0.1, baseStress + stressTrend))
+    const stressLevel = Math.min(0.95, Math.max(0.1, baseStress + stressTrend))
 
     // Random emotion based on stress (kind of)
     let emotion = 'neutral'

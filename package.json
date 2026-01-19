@@ -1,5 +1,5 @@
 {
-  "name": "nostalgic-persuasive-model-final",
+  "name": "nostalgic-persuasive-model",
   "type": "module",
   "private": true,
   "scripts": {
@@ -14,15 +14,14 @@
     "db:migrate": "dotenv -e .env -- drizzle-kit migrate",
     "db:seed": "bun run ./server/database/seed.ts",
     "db:studio": "dotenv -e .env -- drizzle-kit studio",
-    "db:start": "docker compose up -d",
+    "db:start": "docker compose up -d postgres",
     "db:stop": "docker compose stop",
     "db:down": "docker compose down",
     "db:destroy": "docker compose down -v",
     "format": "prettier --check .",
     "format:fix": "prettier --write .",
     "prepare": "husky",
-    "dev:all": "concurrently -k -n \"APP,DB,STUDIO\" -c \"blue,green,magenta\" \"bun run dev\" \"docker compose up\" \"bun run db:studio\"",
-    "setup:models": "pixi run python scripts/download_models.py"
+    "dev:all": "concurrently -k -n \"APP,DB,STUDIO\" -c \"blue,green,magenta\" \"bun run dev\" \"docker compose up\" \"bun run db:studio\""
   },
   "dependencies": {
     "@nuxt/eslint": "1.12.1",

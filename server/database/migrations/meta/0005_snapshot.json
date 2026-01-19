@@ -110,12 +110,8 @@
           "name": "account_user_id_user_id_fk",
           "tableFrom": "account",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -202,12 +198,8 @@
           "name": "session_user_id_user_id_fk",
           "tableFrom": "session",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -217,9 +209,7 @@
         "session_token_unique": {
           "name": "session_token_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "token"
-          ]
+          "columns": ["token"]
         }
       },
       "policies": {},
@@ -283,9 +273,7 @@
         "user_email_unique": {
           "name": "user_email_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "email"
-          ]
+          "columns": ["email"]
         }
       },
       "policies": {},
@@ -743,12 +731,8 @@
           "name": "user_preferences_user_id_user_id_fk",
           "tableFrom": "user_preferences",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -758,9 +742,7 @@
         "user_preferences_user_id_unique": {
           "name": "user_preferences_user_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "user_id"
-          ]
+          "columns": ["user_id"]
         }
       },
       "policies": {},
@@ -853,12 +835,8 @@
           "name": "content_feedback_user_id_user_id_fk",
           "tableFrom": "content_feedback",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -955,12 +933,8 @@
           "name": "daily_habit_logs_user_id_user_id_fk",
           "tableFrom": "daily_habit_logs",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -970,10 +944,7 @@
         "daily_habit_logs_user_date_unique": {
           "name": "daily_habit_logs_user_date_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "user_id",
-            "date"
-          ]
+          "columns": ["user_id", "date"]
         }
       },
       "policies": {},
@@ -1055,12 +1026,8 @@
           "name": "song_vectors_spotify_id_songs_id_fk",
           "tableFrom": "song_vectors",
           "tableTo": "songs",
-          "columnsFrom": [
-            "spotify_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["spotify_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1070,9 +1037,7 @@
         "song_vectors_spotify_id_unique": {
           "name": "song_vectors_spotify_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "spotify_id"
-          ]
+          "columns": ["spotify_id"]
         }
       },
       "policies": {},
@@ -1084,18 +1049,12 @@
     "public.habit_type": {
       "name": "habit_type",
       "schema": "public",
-      "values": [
-        "exercise",
-        "smoking_cessation"
-      ]
+      "values": ["exercise", "smoking_cessation"]
     },
     "public.content_type": {
       "name": "content_type",
       "schema": "public",
-      "values": [
-        "song",
-        "movie"
-      ]
+      "values": ["song", "movie"]
     }
   },
   "schemas": {},

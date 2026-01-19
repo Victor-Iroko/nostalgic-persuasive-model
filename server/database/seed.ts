@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 import { parse } from 'csv-parse'
 import { createReadStream } from 'fs'
 import { db } from '../utils/db'
@@ -213,7 +212,7 @@ async function seedSongs() {
       valence: row.valence ? parseFloat(row.valence) : null,
       tempo: row.tempo ? parseFloat(row.tempo) : null,
       durationMs: row.duration_ms ? parseInt(row.duration_ms, 10) : null,
-      lyrics: row.lyrics || null,
+      lyrics: null,
       year: row.year ? parseInt(row.year, 10) : null,
       genre: row.genre || null,
       popularity: row.popularity ? parseInt(row.popularity, 10) : null,

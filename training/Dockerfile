@@ -12,13 +12,12 @@ WORKDIR /app
 
 # Install dependencies
 # Using pip directly for simplicity in Docker. 
-# joblib, lightfm, numpy, pandas, scipy
-RUN pip install "numpy<2" pandas scipy scikit-learn lightfm joblib
+# joblib, lightfm, numpy, pandas, scipy, psycopg2, dotenv
+RUN pip install "numpy<2" pandas scipy scikit-learn lightfm joblib psycopg2-binary python-dotenv
 
 # Copy training and evaluation scripts
-COPY movie_training.py .
-COPY movie_evaluation.py .
-COPY preprocess_movies.py .
+COPY movies/ .
+COPY songs/ .
 
 # We expect the dataset to be mounted at /dataset and models at /models
 # This will be handled by the docker run command

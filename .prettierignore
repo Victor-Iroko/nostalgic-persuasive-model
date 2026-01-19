@@ -3,3 +3,12 @@ node_modules
 .output
 dist
 *.min.js
+
+# Backend & Python
+fastapi-backend/**
+training/**
+models/**
+dataset/**
+writeup/**
+**/*.py
+.pixi/**

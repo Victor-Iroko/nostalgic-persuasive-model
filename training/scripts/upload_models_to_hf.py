@@ -13,7 +13,7 @@ from huggingface_hub import HfApi, create_repo
 from typing import Literal
 
 # Configuration
-MODELS_DIR = Path(__file__).parent.parent / "models"
+MODELS_DIR = Path(__file__).parent.parent.parent / "models"
 HF_USERNAME = "YOUR_HF_USERNAME"  # Change this to your Hugging Face username
 REPO_NAME = "nostalgic-persuasive-models"  # Name for your HF repository
 

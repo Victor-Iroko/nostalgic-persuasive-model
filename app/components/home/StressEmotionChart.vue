@@ -160,11 +160,11 @@ const getEmotionEmoji = (emotion: string | null | undefined): string => {
                 <!-- Outer Glow (Hover) -->
                 <div
                   class="absolute inset-0 scale-50 rounded-full bg-primary/20 opacity-0 transition-all duration-300 group-hover:scale-150 group-hover:opacity-100"
-                ></div>
+                />
                 <!-- Circle -->
                 <div
                   class="h-3 w-3 rounded-full border-2 border-primary bg-white shadow-sm transition-transform group-hover:scale-110 dark:bg-gray-900"
-                ></div>
+                />
               </div>
 
               <!-- Tooltip on Emoji -->

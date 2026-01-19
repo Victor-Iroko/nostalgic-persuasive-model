@@ -27,6 +27,12 @@ def upload_folder_to_hf(
     """Upload a local folder to a specific path in the HF repo."""
     print(f"  Uploading {local_folder.name} to {repo_id}/{folder_in_repo}...")
 
+    try:
+        api.delete_folder(path_in_repo=folder_in_repo, repo_id=repo_id)
+        print(f"  [OK] Deleted existing {folder_in_repo} folder")
+    except Exception:
+        pass
+
     api.upload_folder(
         folder_path=str(local_folder),
         repo_id=repo_id,
@@ -34,7 +40,7 @@ def upload_folder_to_hf(
         commit_message=f"Add {folder_in_repo} model",
     )
 
-    print(f"  ✓ {local_folder.name} uploaded successfully!")
+    print(f"  [OK] {local_folder.name} uploaded successfully!")
 
 
 def create_model_card(repo_id: str) -> str:
@@ -136,7 +142,7 @@ def main() -> None:
             exist_ok=True,
             private=False,  # Set to True if you want a private repo
         )
-        print(f"✓ Repository ready: https://huggingface.co/{repo_id}")
+        print(f"[OK] Repository ready: https://huggingface.co/{repo_id}")
     except Exception as e:
         print(f"Note: Repository may already exist or error: {e}")
 
@@ -148,7 +154,7 @@ def main() -> None:
         repo_id=repo_id,
         commit_message="Add model card",
     )
-    print("✓ Model card uploaded!")
+    print("[OK] Model card uploaded!")
 
     # List of model folders to upload
     model_folders = [
@@ -171,10 +177,10 @@ def main() -> None:
                 folder_in_repo=folder_name,
             )
         else:
-            print(f"  ⚠ Folder not found: {folder_path}")
+            print(f"  [WARN] Folder not found: {folder_path}")
 
     print("\n" + "=" * 50)
-    print("✓ All models uploaded successfully!")
+    print("[OK] All models uploaded successfully!")
     print(f"View your models at: https://huggingface.co/{repo_id}")
     print("=" * 50)
 

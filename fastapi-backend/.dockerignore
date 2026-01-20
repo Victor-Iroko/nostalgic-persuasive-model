@@ -7,3 +7,9 @@ tests/
 .pytest_cache
 .coverage
 htmlcov/
+*.txt
+*.backup
+pixi.*
+pyrightconfig.json
+ruff.toml
+.gitattributes

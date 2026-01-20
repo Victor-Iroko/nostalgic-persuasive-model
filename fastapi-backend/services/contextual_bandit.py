@@ -10,15 +10,12 @@ contexts (stress level, emotion, time of day, etc.).
 
 import json
 import math
-import os
-from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
 import joblib
 import numpy as np
-import pandas as pd
-from mabwiser.mab import MAB, LearningPolicy, NeighborhoodPolicy
+from mabwiser.mab import MAB, LearningPolicy
 
 
 # Type aliases
@@ -136,6 +133,9 @@ class LinUCBBandit:
             if arm in self.arms:
                 # Get expectation for this arm given context
                 expectations = self.mab.predict_expectations(context_2d)
+                # Handle list return type (mabwiser returns list for 2D input)
+                if isinstance(expectations, list):
+                    expectations = expectations[0]
                 score = expectations.get(arm, 0.5)
             else:
                 score = 0.5
@@ -269,7 +269,6 @@ class HierarchicalBandit:
 
     def __init__(
         self,
-        models_dir: str | Path,
         alpha: float = 1.0,
         min_user_updates: int = 10,
     ) -> None:
@@ -277,11 +276,10 @@ class HierarchicalBandit:
         Initialize hierarchical bandit.
 
         Args:
-            models_dir: Directory to save/load models.
             alpha: LinUCB exploration parameter.
             min_user_updates: Minimum updates before using per-user model.
         """
-        self.models_dir = Path(models_dir)
+        self.models_dir = Path("./bandit_models")
         self.models_dir.mkdir(parents=True, exist_ok=True)
 
         self.alpha = alpha
@@ -295,25 +293,6 @@ class HierarchicalBandit:
 
     def _load_or_create_global(self) -> LinUCBBandit:
         """Load global model from disk or create new one."""
-        repo_id = os.getenv("HF_REPO_ID")
-
-        if repo_id:
-            print(f"Loading global bandit from Hugging Face Hub: {repo_id}...")
-            try:
-                from huggingface_hub import hf_hub_download
-
-                model_path = hf_hub_download(
-                    repo_id=repo_id, filename="bandit/global_bandit.joblib"
-                )
-                bandit = LinUCBBandit.load(Path(model_path))
-                print(
-                    f"   Loaded global bandit from HF Hub with {bandit.n_updates} updates (full model)"
-                )
-                return bandit
-            except Exception as e:
-                print(f"⚠ Failed to load global bandit from HF Hub: {e}")
-                print("Falling back to local models...")
-
         # Try joblib first (full model)
         joblib_path = self.models_dir / "global_bandit.joblib"
         if joblib_path.exists():

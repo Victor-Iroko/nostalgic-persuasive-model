@@ -5,8 +5,6 @@ This module provides stress level prediction from text input
 using a RoBERTa model fine-tuned for mental health stress detection.
 """
 
-from pathlib import Path
-
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
@@ -14,46 +12,29 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 class StressDetector:
     """Stress detection using a fine-tuned RoBERTa model."""
 
-    def __init__(self, model_path: str | Path) -> None:
-        """
-        Initialize the stress detector.
-
-        Args:
-            model_path: Path to the directory containing the model files.
-        """
+    def __init__(self) -> None:
+        """Initialize the stress detector. Requires HF_REPO_ID environment variable."""
         import os
+
         repo_id = os.getenv("HF_REPO_ID")
-        self.model_path = Path(model_path)
-        
-        if repo_id:
-             print(f"   Loading tokenizer from HF Hub: {repo_id} (subfolder=stress_detection_mental_roberta)...")
-             self.tokenizer = AutoTokenizer.from_pretrained(repo_id, subfolder="stress_detection_mental_roberta")
-             
-             print(f"   Loading model from HF Hub: {repo_id} (subfolder=stress_detection_mental_roberta)...")
-             self.model = AutoModelForSequenceClassification.from_pretrained(repo_id, subfolder="stress_detection_mental_roberta")
-        elif self.model_path.exists():
-             print(f"   Loading tokenizer from {self.model_path}...")
-             self.tokenizer = AutoTokenizer.from_pretrained(str(self.model_path))
-             
-             print(f"   Loading model from {self.model_path}...")
-             self.model = AutoModelForSequenceClassification.from_pretrained(
-                 str(self.model_path)
-             )
-        else:
-            # Check if this is a repo ID (fallback check)
-            path_str = str(self.model_path)
-            if "/" in path_str and not "\\" in path_str: # Simple heuristic for repo/model format
-                 print(f"   Model directory not found locally, assuming Hugging Face Hub ID: {path_str}")
-                 try:
-                     print(f"   Loading tokenizer from HF Hub: {path_str} (subfolder=stress_detection_mental_roberta)...")
-                     self.tokenizer = AutoTokenizer.from_pretrained(path_str, subfolder="stress_detection_mental_roberta")
-                     
-                     print(f"   Loading model from HF Hub: {path_str} (subfolder=stress_detection_mental_roberta)...")
-                     self.model = AutoModelForSequenceClassification.from_pretrained(path_str, subfolder="stress_detection_mental_roberta")
-                 except Exception as e:
-                     raise FileNotFoundError(f"Could not load model from local path or HF Hub: {e}")
-            else:
-                 raise FileNotFoundError(f"Model directory not found: {self.model_path}")
+
+        if not repo_id:
+            raise ValueError("HF_REPO_ID environment variable must be set")
+
+        print(
+            f"   Loading tokenizer from HF Hub: {repo_id} (subfolder=stress_detection_mental_roberta)..."
+        )
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            repo_id, subfolder="stress_detection_mental_roberta"
+        )
+
+        print(
+            f"   Loading model from HF Hub: {repo_id} (subfolder=stress_detection_mental_roberta)..."
+        )
+        self.model = AutoModelForSequenceClassification.from_pretrained(
+            repo_id, subfolder="stress_detection_mental_roberta"
+        )
+
         self.model.eval()
 
         # Use GPU if available

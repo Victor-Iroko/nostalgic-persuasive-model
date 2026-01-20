@@ -9,8 +9,6 @@ This module provides the main recommendation endpoint that:
 """
 
 import os
-from datetime import date
-from typing import Optional
 
 import psycopg2
 import pandas as pd
@@ -500,6 +498,10 @@ async def get_recommendation(
 
                 # Predict
                 predictions = bandit.global_model.mab.predict_expectations(context_2d)
+
+                # Handle list return type (mabwiser returns list for 2D input)
+                if isinstance(predictions, list):
+                    predictions = predictions[0]
 
                 score_summary = []
                 for arm in set(candidate_arms):

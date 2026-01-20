@@ -1,4 +1,5 @@
 """Routes package - API endpoint modules."""
+
 from routes.movies import router as movies_router
 from routes.songs import router as songs_router
 from routes.recommend import router as recommend_router

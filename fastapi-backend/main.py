@@ -1,5 +1,4 @@
-"""
-FastAPI Recommendation Server
+"""FastAPI Recommendation Server
 
 This server provides endpoints for movie and song recommendations.
 Models are loaded on startup using FastAPI's lifespan events.
@@ -10,33 +9,26 @@ Run with: uvicorn main:app --reload
 import os
 import traceback
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncGenerator
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# Load environment variables from parent directory
-from pathlib import Path
-
 ENV_FILE = Path(__file__).parent.parent / ".env"
 load_dotenv(ENV_FILE)
 
-# Import recommenders
-from services.movie_recommender import MovieRecommender
-from services.song_recommender import SongRecommender
-from services.stress_detector import StressDetector
-from services.emotion_detector import EmotionDetector
-from services.contextual_bandit import HierarchicalBandit
-
-# Import routes
-from routes.movies import router as movies_router
-from routes.songs import router as songs_router
-from routes.stress import router as analyze_router
-from routes.recommend import router as recommend_router
-
-# Import schemas
-from core.schemas import HealthCheckResponse
+from routes.movies import router as movies_router  # noqa: E402
+from routes.songs import router as songs_router  # noqa: E402
+from routes.stress import router as analyze_router  # noqa: E402
+from routes.recommend import router as recommend_router  # noqa: E402
+from core.schemas import HealthCheckResponse  # noqa: E402
+from services.movie_recommender import MovieRecommender  # noqa: E402
+from services.song_recommender import SongRecommender  # noqa: E402
+from services.stress_detector import StressDetector  # noqa: E402
+from services.emotion_detector import EmotionDetector  # noqa: E402
+from services.contextual_bandit import HierarchicalBandit  # noqa: E402
 
 
 # =============================================================================
@@ -69,6 +61,7 @@ CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
 # Model State
 # =============================================================================
 
+
 class AppState:
     """Application state container for recommenders."""
 
@@ -81,6 +74,7 @@ class AppState:
 # =============================================================================
 # Lifespan Events
 # =============================================================================
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -114,8 +108,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     print("\n📽️  Loading Movie Recommender...")
     try:
         movie_recommender = MovieRecommender()
-        app.state.recommenders["movie"] = movie_recommender
-        app.state.model_status["movie_loaded"] = True
+        app.state.recommenders["movie"] = movie_recommender  # type: ignore[assignment]
+        app.state.model_status["movie_loaded"] = True  # type: ignore[assignment]
         print("✅ Movie Recommender loaded successfully!")
     except FileNotFoundError as e:
         print(f"⚠️  Movie model files not found: {e}")
@@ -128,8 +122,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     print("\n🎵 Loading Song Recommender...")
     try:
         song_recommender = SongRecommender()
-        app.state.recommenders["song"] = song_recommender
-        app.state.model_status["song_loaded"] = True
+        app.state.recommenders["song"] = song_recommender  # type: ignore[assignment]
+        app.state.model_status["song_loaded"] = True  # type: ignore[assignment]
         print("✅ Song Recommender loaded successfully!")
     except FileNotFoundError as e:
         print(f"⚠️  Song model files not found: {e}")
@@ -140,11 +134,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         traceback.print_exc()
 
     # Load stress detector
-    print("\n🧠 Loading Stress Detector...")
+    print("\n🧠  Loading Stress Detector...")
     try:
-        stress_detector = StressDetector(Path(__file__).parent.parent / "models" / "stress_detection_mental_roberta")
-        app.state.recommenders["stress"] = stress_detector
-        app.state.model_status["stress_loaded"] = True
+        stress_detector = StressDetector()
+        app.state.recommenders["stress"] = stress_detector  # type: ignore[assignment]
+        app.state.model_status["stress_loaded"] = True  # type: ignore[assignment]
         print("✅ Stress Detector loaded successfully!")
     except FileNotFoundError as e:
         print(f"⚠️  Stress model files not found: {e}")
@@ -156,20 +150,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Load emotion detector
     print("\n💭 Loading Emotion Detector...")
     try:
-        emotion_model_path = Path(__file__).parent.parent / "models" / "emotion_model"
-        # Try to load real model
-        emotion_detector = EmotionDetector(emotion_model_path, use_mock=False)
-        app.state.recommenders["emotion"] = emotion_detector
-        app.state.model_status["emotion_loaded"] = True
+        emotion_detector = EmotionDetector(use_mock=False)
+        app.state.recommenders["emotion"] = emotion_detector  # type: ignore[assignment]
+        app.state.model_status["emotion_loaded"] = True  # type: ignore[assignment]
         print("✅ Emotion Detector loaded successfully!")
     except Exception as e:
         print(f"⚠️  Error loading real Emotion Detector: {e}")
         print("   Falling back to MOCK Emotion Detector.")
         try:
-            # Fallback to mock
-            emotion_detector = EmotionDetector("", use_mock=True)
-            app.state.recommenders["emotion"] = emotion_detector
-            app.state.model_status["emotion_loaded"] = True
+            emotion_detector = EmotionDetector(use_mock=True)
+            app.state.recommenders["emotion"] = emotion_detector  # type: ignore[assignment]
+            app.state.model_status["emotion_loaded"] = True  # type: ignore[assignment]
             print("✅ Mock Emotion Detector loaded.")
         except Exception as e2:
             print(f"❌ Error loading Mock Emotion Detector: {e2}")
@@ -178,10 +169,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Load contextual bandit
     print("\n🎰 Loading Contextual Bandit...")
     try:
-        bandit_models_dir = Path(__file__).parent.parent / "models" / "bandit"
-        bandit = HierarchicalBandit(models_dir=bandit_models_dir)
-        app.state.recommenders["bandit"] = bandit
-        app.state.model_status["bandit_loaded"] = True
+        bandit = HierarchicalBandit()
+        app.state.recommenders["bandit"] = bandit  # type: ignore[assignment]
+        app.state.model_status["bandit_loaded"] = True  # type: ignore[assignment]
         print("✅ Contextual Bandit loaded successfully!")
     except Exception as e:
         print(f"❌ Error loading Contextual Bandit: {e}")
@@ -256,6 +246,7 @@ app.add_middleware(
 # =============================================================================
 # Health Check Endpoint
 # =============================================================================
+
 
 @app.get(
     "/health",

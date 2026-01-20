@@ -18,7 +18,7 @@ Usage:
 import ast
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional, cast
 
 import joblib
 import numpy as np
@@ -30,7 +30,6 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 # Paths (services/ -> fastapi-backend/ -> project_root/)
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-MODELS_DIR = PROJECT_ROOT / "models" / "song_recommender"
 ENV_FILE = PROJECT_ROOT / ".env"
 
 # Load environment variables
@@ -66,21 +65,20 @@ class SongRecommender:
 
     This class loads the trained transformers and provides recommendations
     by querying the song_vectors table in PostgreSQL using pgvector similarity search.
+    Requires HF_REPO_ID environment variable.
     """
 
     def __init__(
         self,
-        models_dir: Optional[Path] = None,
         database_url: Optional[str] = None,
     ) -> None:
         """
         Initialize the recommender by loading transformers and connecting to database.
+        Requires HF_REPO_ID environment variable.
 
         Args:
-            models_dir: Path to the directory containing model files.
             database_url: PostgreSQL connection string.
         """
-        self.models_dir = models_dir or MODELS_DIR
         self.database_url = database_url or DATABASE_URL
 
         # Database connection (lazy initialization)
@@ -89,59 +87,36 @@ class SongRecommender:
         # Load transformers
         repo_id = os.getenv("HF_REPO_ID")
 
-        if repo_id:
-            print(
-                f"Loading song feature transformers from Hugging Face Hub: {repo_id}..."
+        if not repo_id:
+            raise ValueError("HF_REPO_ID environment variable must be set")
+
+        print(f"Loading song feature transformers from Hugging Face Hub: {repo_id}...")
+        try:
+            from huggingface_hub import hf_hub_download
+
+            # Download and load audio_scaler.joblib
+            scaler_path = hf_hub_download(
+                repo_id=repo_id, filename="song_recommender/audio_scaler.joblib"
             )
-            try:
-                from huggingface_hub import hf_hub_download
+            self.audio_scaler: StandardScaler = joblib.load(scaler_path)
 
-                # Download and load audio_scaler.joblib
-                scaler_path = hf_hub_download(
-                    repo_id=repo_id, filename="song_recommender/audio_scaler.joblib"
-                )
-                self.audio_scaler: StandardScaler = joblib.load(scaler_path)
+            # Download and load genre_encoder.joblib
+            encoder_path = hf_hub_download(
+                repo_id=repo_id, filename="song_recommender/genre_encoder.joblib"
+            )
+            self.genre_encoder: OneHotEncoder = joblib.load(encoder_path)
 
-                # Download and load genre_encoder.joblib
-                encoder_path = hf_hub_download(
-                    repo_id=repo_id, filename="song_recommender/genre_encoder.joblib"
-                )
-                self.genre_encoder: OneHotEncoder = joblib.load(encoder_path)
+            # Download and load tfidf_vectorizer.joblib
+            tfidf_path = hf_hub_download(
+                repo_id=repo_id, filename="song_recommender/tfidf_vectorizer.joblib"
+            )
+            self.tfidf_vectorizer: TfidfVectorizer = joblib.load(tfidf_path)
 
-                # Download and load tfidf_vectorizer.joblib
-                tfidf_path = hf_hub_download(
-                    repo_id=repo_id, filename="song_recommender/tfidf_vectorizer.joblib"
-                )
-                self.tfidf_vectorizer: TfidfVectorizer = joblib.load(tfidf_path)
+            print("✓ Song transformers downloaded and loaded from HF Hub")
 
-                print("✓ Song transformers downloaded and loaded from HF Hub")
-
-            except Exception as e:
-                print(f"⚠ Failed to load from HF Hub: {e}")
-                print("Falling back to local models...")
-                self._load_local_transformers()
-        else:
-            print("HF_REPO_ID not set. Loading from local directory...")
-            self._load_local_transformers()
-
-    def _load_local_transformers(self) -> None:
-        """Helper to load transformers from local directory."""
-        print(f"Loading song feature transformers from {self.models_dir}...")
-        self.audio_scaler: StandardScaler = joblib.load(
-            self.models_dir / "audio_scaler.joblib"
-        )
-        self.genre_encoder: OneHotEncoder = joblib.load(
-            self.models_dir / "genre_encoder.joblib"
-        )
-        self.tfidf_vectorizer: TfidfVectorizer = joblib.load(
-            self.models_dir / "tfidf_vectorizer.joblib"
-        )
-
-        # Database connection (lazy initialization)
-        if self._conn is None:
-            self._conn: Optional[psycopg2.extensions.connection] = None
-
-        print("Song recommender initialized!")
+        except Exception as e:
+            print(f"⚠ Failed to load from HF Hub: {e}")
+            raise
 
     def _get_connection(self) -> psycopg2.extensions.connection:
         """Get or create database connection."""
@@ -184,7 +159,10 @@ class SongRecommender:
             except (ValueError, SyntaxError):
                 niche_genres = []
         genres_text = " ".join(niche_genres) if niche_genres else ""
-        tfidf_features = self.tfidf_vectorizer.transform([genres_text]).toarray()
+        tfidf_features = cast(
+            np.ndarray,
+            cast(Any, self.tfidf_vectorizer.transform([genres_text])).toarray(),
+        )
 
         # 4. Year (normalized - using approximate mean/std from training)
         year = song_data.get("year", 2000)
@@ -193,10 +171,10 @@ class SongRecommender:
         # 5. Combine with weights (same as training)
         combined = np.hstack(
             [
-                audio_scaled * 1.5,
-                genre_encoded * 1.5,
-                tfidf_features * 1.0,
-                year_normalized * 2.0,
+                cast(np.ndarray, audio_scaled) * 1.5,
+                cast(np.ndarray, genre_encoded) * 1.5,
+                cast(np.ndarray, tfidf_features) * 1.0,
+                cast(np.ndarray, year_normalized) * 2.0,
             ]
         )
 
@@ -679,7 +657,9 @@ if __name__ == "__main__":
             print("\nTop 10 Recommendations:")
             print("-" * 60)
             for i, row in recommendations.iterrows():
-                print(f"{i + 1}. {row['name']} - {row['artists']}")
+                print(
+                    f"{int(i) + 1 if isinstance(i, (int, float, str)) else int(str(i)) + 1}. {row['name']} - {row['artists']}"
+                )
                 print(
                     f"   Genre: {row['genre']} | Year: {row['year']} | Similarity: {row['similarity']:.3f}"
                 )

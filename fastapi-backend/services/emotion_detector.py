@@ -5,11 +5,9 @@ This module provides emotion prediction from text input using a
 multi-label classification model trained on the Cirimus/Super-Emotion dataset.
 """
 
-from pathlib import Path
 from typing import Any, Dict
 
 import torch
-import torch.nn.functional as F
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 
@@ -19,12 +17,11 @@ class EmotionDetector:
     LABELS = ["anger", "fear", "joy", "love", "neutral", "sadness", "surprise"]
     THRESHOLD = 0.56  # Optimized threshold from training analysis
 
-    def __init__(self, model_path: str | Path, use_mock: bool = False) -> None:
+    def __init__(self, use_mock: bool = False) -> None:
         """
-        Initialize the emotion detector.
+        Initialize the emotion detector. Requires HF_REPO_ID environment variable.
 
         Args:
-            model_path: Path to the directory containing the model files.
             use_mock: If True, use a mock implementation (no model loading).
         """
         self.use_mock = use_mock
@@ -33,38 +30,24 @@ class EmotionDetector:
             return
 
         import os
-        repo_id = os.getenv("HF_REPO_ID")
-        self.model_path = Path(model_path)
-        
-        if repo_id:
-             print(f"   Loading tokenizer from HF Hub: {repo_id} (subfolder=emotion_model)...")
-             self.tokenizer = AutoTokenizer.from_pretrained(repo_id, subfolder="emotion_model")
-             
-             print(f"   Loading model from HF Hub: {repo_id} (subfolder=emotion_model)...")
-             self.model = AutoModelForSequenceClassification.from_pretrained(repo_id, subfolder="emotion_model")
-        elif self.model_path.exists():
-            print(f"   Loading tokenizer from {self.model_path}...")
-            self.tokenizer = AutoTokenizer.from_pretrained(str(self.model_path))
 
-            print(f"   Loading model from {self.model_path}...")
-            self.model = AutoModelForSequenceClassification.from_pretrained(
-                str(self.model_path)
-            )
-        else:
-             # Check if this is a repo ID (fallback check)
-            path_str = str(self.model_path)
-            if "/" in path_str and not "\\" in path_str:
-                 print(f"   Model directory not found locally, assuming Hugging Face Hub ID: {path_str}")
-                 try:
-                     print(f"   Loading tokenizer from HF Hub: {path_str} (subfolder=emotion_model)...")
-                     self.tokenizer = AutoTokenizer.from_pretrained(path_str, subfolder="emotion_model")
-                     
-                     print(f"   Loading model from HF Hub: {path_str} (subfolder=emotion_model)...")
-                     self.model = AutoModelForSequenceClassification.from_pretrained(path_str, subfolder="emotion_model")
-                 except Exception as e:
-                     raise FileNotFoundError(f"Could not load model from local path or HF Hub: {e}")
-            else:
-                raise FileNotFoundError(f"Model directory not found: {self.model_path}")
+        repo_id = os.getenv("HF_REPO_ID")
+
+        if not repo_id:
+            raise ValueError("HF_REPO_ID environment variable must be set")
+
+        print(
+            f"   Loading tokenizer from HF Hub: {repo_id} (subfolder=emotion_model)..."
+        )
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            repo_id, subfolder="emotion_model"
+        )
+
+        print(f"   Loading model from HF Hub: {repo_id} (subfolder=emotion_model)...")
+        self.model = AutoModelForSequenceClassification.from_pretrained(
+            repo_id, subfolder="emotion_model"
+        )
+
         self.model.eval()
 
         # Use GPU if available
@@ -132,16 +115,11 @@ class EmotionDetector:
         valid_emotions = {k: v for k, v in prob_dict.items() if v >= self.THRESHOLD}
 
         if valid_emotions:
-            dominant_emotion = max(valid_emotions, key=valid_emotions.get)
-            confidence = valid_emotions[dominant_emotion]
+            dominant_emotion, confidence = max(
+                valid_emotions.items(), key=lambda x: x[1]
+            )
         else:
-            # Fallback: if nothing crosses threshold, check if "neutral" is relatively high
-            # or just return the max one but with low confidence annotation?
-            # Let's return the max score anyway, but maybe it's effectively "neutral"
-            # logic-wise in the app if confidence is low.
-            # For this integration, let's just pick the raw max.
-            dominant_emotion = max(prob_dict, key=prob_dict.get)
-            confidence = prob_dict[dominant_emotion]
+            dominant_emotion, confidence = max(prob_dict.items(), key=lambda x: x[1])
 
         return {
             "emotion": dominant_emotion,

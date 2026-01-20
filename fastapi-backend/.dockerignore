@@ -1,0 +1,9 @@
+__pycache__
+.pixi
+.git
+.gitignore
+tests/
+*.pyc
+.pytest_cache
+.coverage
+htmlcov/

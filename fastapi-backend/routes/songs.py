@@ -4,6 +4,9 @@ Song recommendation API routes.
 This module provides endpoints for song recommendations using pgvector.
 """
 
+from typing import Any, Union
+
+import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
 
 from core.dependencies import get_song_recommender
@@ -19,6 +22,29 @@ from core.schemas import (
     SongSearchRequest,
     SongSearchResponse,
 )
+
+
+def _get_int(d: Union[dict[str, Any], pd.Series], key: str) -> int | None:
+    """Safely get an int value from a dict or Series."""
+    val = d.get(key)
+    if val is None:
+        return None
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return None
+
+
+def _get_float(d: Union[dict[str, Any], pd.Series], key: str) -> float | None:
+    """Safely get a float value from a dict or Series."""
+    val = d.get(key)
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None
+
 
 router = APIRouter(prefix="/songs", tags=["Songs"])
 
@@ -55,12 +81,14 @@ async def recommend_songs(
                         name=str(info.get("name", "Unknown")),
                         artists=str(info.get("artists", "Unknown")),
                         genre=str(info.get("genre")) if info.get("genre") else None,
-                        year=int(info.get("year")) if info.get("year") else None,
+                        year=_get_int(info, "year"),
                     )
                 )
 
         # Generate recommendations - convert song IDs to the expected format
-        liked_items = [{"spotify_id": sid, "timestamp": None} for sid in request.liked_song_ids]
+        liked_items = [
+            {"spotify_id": sid, "timestamp": None} for sid in request.liked_song_ids
+        ]
         recommendations_df = recommender.recommend(
             liked_items=liked_items,
             n_recommendations=request.n_recommendations,
@@ -82,8 +110,8 @@ async def recommend_songs(
                     name=str(row["name"]),
                     artists=str(row["artists"]),
                     genre=str(row.get("genre")) if row.get("genre") else None,
-                    year=int(row.get("year")) if row.get("year") else None,
-                    similarity=float(row.get("similarity", 0.0)),
+                    year=_get_int(row, "year"),
+                    similarity=_get_float(row, "similarity") or 0.0,
                 )
             )
 
@@ -93,7 +121,9 @@ async def recommend_songs(
         )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generating recommendations: {e}") from e
+        raise HTTPException(
+            status_code=500, detail=f"Error generating recommendations: {e}"
+        ) from e
 
 
 @router.post(
@@ -120,7 +150,8 @@ async def recommend_songs_by_id(
         info = recommender.get_song_info(request.spotify_id)
         if not info:
             raise HTTPException(
-                status_code=404, detail=f"Song {request.spotify_id} not found in database"
+                status_code=404,
+                detail=f"Song {request.spotify_id} not found in database",
             )
 
         query_song = SongInfo(
@@ -128,14 +159,13 @@ async def recommend_songs_by_id(
             name=str(info.get("name", "Unknown")),
             artists=str(info.get("artists", "Unknown")),
             genre=str(info.get("genre")) if info.get("genre") else None,
-            year=int(info.get("year")) if info.get("year") else None,
+            year=_get_int(info, "year"),
         )
 
         # Generate recommendations
         recommendations_df = recommender.recommend_by_id(
             spotify_id=request.spotify_id,
             n_recommendations=request.n_recommendations,
-            min_years_old=10,
         )
 
         recommendations: list[SongRecommendation] = []
@@ -146,8 +176,8 @@ async def recommend_songs_by_id(
                     name=str(row["name"]),
                     artists=str(row["artists"]),
                     genre=str(row.get("genre")) if row.get("genre") else None,
-                    year=int(row.get("year")) if row.get("year") else None,
-                    similarity=float(row.get("similarity", 0.0)),
+                    year=_get_int(row, "year"),
+                    similarity=_get_float(row, "similarity") or 0.0,
                 )
             )
 
@@ -159,7 +189,9 @@ async def recommend_songs_by_id(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generating recommendations: {e}") from e
+        raise HTTPException(
+            status_code=500, detail=f"Error generating recommendations: {e}"
+        ) from e
 
 
 @router.get(
@@ -186,19 +218,21 @@ async def get_song(
         name=str(info.get("name", "Unknown")),
         artists=str(info.get("artists", "Unknown")),
         genre=str(info.get("genre")) if info.get("genre") else None,
-        year=int(info.get("year")) if info.get("year") else None,
-        danceability=float(info.get("danceability")) if info.get("danceability") is not None else None,
-        energy=float(info.get("energy")) if info.get("energy") is not None else None,
-        key=int(info.get("key")) if info.get("key") is not None else None,
-        loudness=float(info.get("loudness")) if info.get("loudness") is not None else None,
-        mode=int(info.get("mode")) if info.get("mode") is not None else None,
-        speechiness=float(info.get("speechiness")) if info.get("speechiness") is not None else None,
-        acousticness=float(info.get("acousticness")) if info.get("acousticness") is not None else None,
-        instrumentalness=float(info.get("instrumentalness")) if info.get("instrumentalness") is not None else None,
-        liveness=float(info.get("liveness")) if info.get("liveness") is not None else None,
-        valence=float(info.get("valence")) if info.get("valence") is not None else None,
-        tempo=float(info.get("tempo")) if info.get("tempo") is not None else None,
-        niche_genres=str(info.get("niche_genres")) if info.get("niche_genres") else None,
+        year=_get_int(info, "year"),
+        danceability=_get_float(info, "danceability"),
+        energy=_get_float(info, "energy"),
+        key=_get_int(info, "key"),
+        loudness=_get_float(info, "loudness"),
+        mode=_get_int(info, "mode"),
+        speechiness=_get_float(info, "speechiness"),
+        acousticness=_get_float(info, "acousticness"),
+        instrumentalness=_get_float(info, "instrumentalness"),
+        liveness=_get_float(info, "liveness"),
+        valence=_get_float(info, "valence"),
+        tempo=_get_float(info, "tempo"),
+        niche_genres=str(info.get("niche_genres"))
+        if info.get("niche_genres")
+        else None,
     )
 
 
@@ -215,7 +249,9 @@ async def search_songs(
     """Search for songs by name or artist."""
     try:
         # Enforce 10-year age filter for nostalgic onboarding
-        results_df = recommender.search_songs(request.query, limit=request.limit, min_years_old=10)
+        results_df = recommender.search_songs(
+            request.query, limit=request.limit, min_years_old=10
+        )
 
         results: list[SongInfo] = []
         for _, row in results_df.iterrows():
@@ -225,7 +261,7 @@ async def search_songs(
                     name=str(row["name"]),
                     artists=str(row["artists"]),
                     genre=str(row.get("genre")) if row.get("genre") else None,
-                    year=int(row.get("year")) if row.get("year") else None,
+                    year=_get_int(row, "year"),
                 )
             )
 
@@ -234,4 +270,6 @@ async def search_songs(
             query=request.query,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error searching songs: {e}") from e
+        raise HTTPException(
+            status_code=500, detail=f"Error searching songs: {e}"
+        ) from e

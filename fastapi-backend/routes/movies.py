@@ -52,13 +52,17 @@ async def recommend_movies(
                         movie_id=int(info.get("movieId", movie_id)),
                         title=str(info.get("title", "Unknown")),
                         genres=str(info.get("genres", "")),
-                        decade=str(info.get("decade", "")) if info.get("decade") else None,
+                        decade=str(info.get("decade", ""))
+                        if info.get("decade")
+                        else None,
                     )
                 )
 
         # Generate recommendations
         recommendations_df = recommender.recommend(
-            liked_items=[{"movieId": mid, "timestamp": None} for mid in request.liked_movie_ids], # Fix: adapt to new signature if needed, or check signature
+            liked_items=[
+                {"movieId": mid, "timestamp": None} for mid in request.liked_movie_ids
+            ],  # Fix: adapt to new signature if needed, or check signature
             n_recommendations=request.n_recommendations,
             exclude_liked=request.exclude_liked,
             min_years_old=10,
@@ -84,7 +88,9 @@ async def recommend_movies(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generating recommendations: {e}") from e
+        raise HTTPException(
+            status_code=500, detail=f"Error generating recommendations: {e}"
+        ) from e
 
 
 @router.get(
@@ -126,7 +132,9 @@ async def search_movies(
 ) -> MovieSearchResponse:
     """Search for movies by title."""
     # Enforce 10-year age filter for nostalgic onboarding
-    results_df = recommender.search_movies(request.query, limit=request.limit, min_years_old=10)
+    results_df = recommender.search_movies(
+        request.query, limit=request.limit, min_years_old=10
+    )
 
     results: list[MovieInfo] = []
     for _, row in results_df.iterrows():

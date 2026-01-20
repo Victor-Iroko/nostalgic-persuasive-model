@@ -30,7 +30,6 @@ from dotenv import load_dotenv
 
 # Paths (services/ -> fastapi-backend/ -> project_root/)
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-MODELS_DIR = PROJECT_ROOT / "models" / "movie_recommender"
 ENV_FILE = PROJECT_ROOT / ".env"
 
 # Load environment variables
@@ -54,18 +53,15 @@ class MovieRecommender:
 
     def __init__(
         self,
-        models_dir: Optional[Path] = None,
         database_url: Optional[str] = None,
     ) -> None:
         """
         Initialize the recommender by loading the trained model and connecting to database.
+        Requires HF_REPO_ID environment variable.
 
         Args:
-            models_dir: Path to the directory containing model files.
-                        Defaults to PROJECT_ROOT/models/movie_recommender
             database_url: PostgreSQL connection string.
         """
-        self.models_dir = models_dir or MODELS_DIR
         self.database_url = database_url or DATABASE_URL
 
         # Database connection (lazy initialization)
@@ -79,84 +75,50 @@ class MovieRecommender:
         # Load model artifacts
         repo_id = os.getenv("HF_REPO_ID")
 
-        if repo_id:
-            print(f"Loading LightFM model from Hugging Face Hub: {repo_id}...")
-            try:
-                from huggingface_hub import hf_hub_download
+        if not repo_id:
+            raise ValueError("HF_REPO_ID environment variable must be set")
 
-                # Download and load lightfm_model.pkl
-                model_path = hf_hub_download(
-                    repo_id=repo_id, filename="movie_recommender/lightfm_model.pkl"
-                )
-                self.model = joblib.load(model_path)
+        print(f"Loading LightFM model from Hugging Face Hub: {repo_id}...")
+        try:
+            from huggingface_hub import hf_hub_download
 
-                # Download and load lightfm_dataset.pkl
-                dataset_path = hf_hub_download(
-                    repo_id=repo_id, filename="movie_recommender/lightfm_dataset.pkl"
-                )
-                self.dataset = joblib.load(dataset_path)
+            # Download and load lightfm_model.pkl
+            model_path = hf_hub_download(
+                repo_id=repo_id, filename="movie_recommender/lightfm_model.pkl"
+            )
+            self.model = joblib.load(model_path)
 
-                # Download and load item_features.pkl
-                features_path = hf_hub_download(
-                    repo_id=repo_id, filename="movie_recommender/item_features.pkl"
-                )
-                self.item_features = joblib.load(features_path)
+            # Download and load lightfm_dataset.pkl
+            dataset_path = hf_hub_download(
+                repo_id=repo_id, filename="movie_recommender/lightfm_dataset.pkl"
+            )
+            self.dataset = joblib.load(dataset_path)
 
-                print("✓ Models downloaded and loaded from HF Hub")
+            # Download and load item_features.pkl
+            features_path = hf_hub_download(
+                repo_id=repo_id, filename="movie_recommender/item_features.pkl"
+            )
+            self.item_features = joblib.load(features_path)
 
-                # Initialize mappings and cache (CRITICAL FIX)
-                (
-                    self._user_id_map,
-                    self._user_feature_map,
-                    self._item_id_map,
-                    self._item_feature_map,
-                ) = self.dataset.mapping()
-                # Reverse mapping
-                self._internal_to_movie = {v: k for k, v in self._item_id_map.items()}
-                self.n_items = len(self._item_id_map)
+            print("✓ Models downloaded and loaded from HF Hub")
 
-                # Build cache
-                self._old_movie_cache = self._build_old_movie_cache()
+            # Initialize mappings and cache
+            (
+                self._user_id_map,
+                self._user_feature_map,
+                self._item_id_map,
+                self._item_feature_map,
+            ) = self.dataset.mapping()
+            # Reverse mapping
+            self._internal_to_movie = {v: k for k, v in self._item_id_map.items()}
+            self.n_items = len(self._item_id_map)
 
-            except Exception as e:
-                print(f"⚠ Failed to load from HF Hub: {e}")
-                print("Falling back to local models...")
-                self._load_local_models()
-        else:
-            print("HF_REPO_ID not set. Loading from local directory...")
-            self._load_local_models()
+            # Build cache
+            self._old_movie_cache = self._build_old_movie_cache()
 
-    def _load_local_models(self) -> None:
-        """Helper to load models from local directory."""
-        print(f"Loading LightFM model from {self.models_dir}...")
-        self.model = joblib.load(self.models_dir / "lightfm_model.pkl")
-        self.dataset = joblib.load(self.models_dir / "lightfm_dataset.pkl")
-        self.item_features = joblib.load(self.models_dir / "item_features.pkl")
-
-        # Database connection (lazy initialization)
-        if self._conn is None:
-            self._conn: Optional[psycopg2.extensions.connection] = None
-
-        # Get internal mappings
-        (
-            self._user_id_map,
-            self._user_feature_map,
-            self._item_id_map,
-            self._item_feature_map,
-        ) = self.dataset.mapping()
-
-        # Reverse mapping: internal_id -> movieId
-        self._internal_to_movie = {v: k for k, v in self._item_id_map.items()}
-
-        # Number of items
-        self.n_items = len(self._item_id_map)
-
-        # Pre-compute old movie cache for fast filtering
-        self._old_movie_cache = self._build_old_movie_cache()
-
-        print(
-            f"Loaded {self.n_items} items ({len(self._old_movie_cache['internal_ids'])} old movies cached)."
-        )
+        except Exception as e:
+            print(f"⚠ Failed to load from HF Hub: {e}")
+            raise
 
     def _get_connection(self) -> psycopg2.extensions.connection:
         """Get or create database connection."""
@@ -291,8 +253,6 @@ class MovieRecommender:
         import datetime
 
         now = datetime.datetime.now()
-
-        internal_ids = [p["internal_id"] for p in internal_props]
 
         # Get item representations from the model
         item_biases, item_embeddings = self.model.get_item_representations(
@@ -638,20 +598,22 @@ if __name__ == "__main__":
         print(search_results)
 
         # Example: User likes Toy Story (1), Jumanji (2), and The Lion King (364)
-        liked_movies = [1, 2, 364]
+        liked_movies = [{"movieId": 1}, {"movieId": 2}, {"movieId": 364}]
 
-        print(f"\nUser liked movies:")
+        print("\nUser liked movies:")
         for mid in liked_movies:
-            info = recommender.get_movie_info(mid)
+            info = recommender.get_movie_info(mid["movieId"])
             print(f"  - {info.get('title', 'Unknown')}")
 
-        print(f"\nGenerating recommendations...")
+        print("\nGenerating recommendations...")
         recommendations = recommender.recommend(liked_movies, n_recommendations=10)
 
         print("\nTop 10 Recommendations:")
         print("-" * 60)
         for i, row in recommendations.iterrows():
-            print(f"{i + 1}. {row['title']}")
+            print(
+                f"{int(i) + 1 if isinstance(i, (int, float, str)) else int(str(i)) + 1}. {row['title']}"
+            )
             print(f"   Genres: {row['genres']} | Decade: {row['decade']}")
             print(f"   Score: {row['score']:.4f}")
             print()

@@ -1,5 +1,10 @@
 FROM ghcr.io/prefix-dev/pixi:0.39.2 AS build
 
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
 # Set working directory
 WORKDIR /app
 

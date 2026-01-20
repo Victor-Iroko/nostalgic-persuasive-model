@@ -6,18 +6,27 @@ with LinUCB policy for selecting optimal nostalgic content recommendations.
 
 The bandit learns which content features work best in different
 contexts (stress level, emotion, time of day, etc.).
+Models are stored in PostgreSQL for persistence.
 """
 
+import io
 import json
 import math
 import os
+from collections import OrderedDict
+from datetime import datetime
 from pathlib import Path
-from typing import Literal
+from typing import Any, Callable, ItemsView, Literal
 
 import joblib
 import numpy as np
-from huggingface_hub import HfApi
 from mabwiser.mab import MAB, LearningPolicy
+
+import sys
+
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
+from core.db import get_db_connection
 
 
 # Type aliases
@@ -26,6 +35,66 @@ ContentType = Literal["song", "movie"]
 # Default context dimension
 # Components: stress(1) + emotion(7) + positive_rate(1) + birth_year(1) + padding(2) = 12
 CONTEXT_DIM = 12
+
+# Default cache settings
+DEFAULT_CACHE_SIZE = 500
+DEFAULT_FLUSH_THRESHOLD = 10
+
+
+class LRUCache:
+    """
+    Simple LRU (Least Recently Used) cache with eviction callback.
+
+    When the cache exceeds max_size, the least recently used item is evicted
+    and the on_evict callback is called to allow persistence before removal.
+    """
+
+    def __init__(
+        self,
+        max_size: int,
+        on_evict: Callable[[str, Any], None] | None = None,
+    ) -> None:
+        """
+        Initialize LRU cache.
+
+        Args:
+            max_size: Maximum number of items to keep in cache.
+            on_evict: Callback called with (key, value) before eviction.
+        """
+        self.max_size = max_size
+        self.cache: OrderedDict[str, Any] = OrderedDict()
+        self.on_evict = on_evict
+
+    def get(self, key: str) -> Any | None:
+        """Get item from cache, marking it as recently used."""
+        if key in self.cache:
+            self.cache.move_to_end(key)  # Mark as recently used
+            return self.cache[key]
+        return None
+
+    def set(self, key: str, value: Any) -> None:
+        """Set item in cache, evicting oldest if over capacity."""
+        if key in self.cache:
+            self.cache.move_to_end(key)
+        self.cache[key] = value
+
+        # Evict oldest if over capacity
+        while len(self.cache) > self.max_size:
+            oldest_key, oldest_value = self.cache.popitem(last=False)
+            if self.on_evict:
+                self.on_evict(oldest_key, oldest_value)
+
+    def items(self) -> ItemsView[str, Any]:
+        """Return all items in cache."""
+        return self.cache.items()
+
+    def __contains__(self, key: str) -> bool:
+        """Check if key exists in cache."""
+        return key in self.cache
+
+    def __len__(self) -> int:
+        """Return number of items in cache."""
+        return len(self.cache)
 
 
 class LinUCBBandit:
@@ -168,13 +237,12 @@ class LinUCBBandit:
 
         # Use continuous reward directly
         decision = arm
-        # binary_reward = 1 if reward > 0.5 else 0  <-- REMOVED BINARIZATION
 
         if not self._is_fitted:
             # First fit
             self.mab.fit(
                 decisions=[decision],
-                rewards=[reward],  # Use continuous reward
+                rewards=[reward],
                 contexts=context_2d,
             )
             self._is_fitted = True
@@ -182,7 +250,7 @@ class LinUCBBandit:
             # Incremental update
             self.mab.partial_fit(
                 decisions=[decision],
-                rewards=[reward],  # Use continuous reward
+                rewards=[reward],
                 contexts=context_2d,
             )
 
@@ -210,8 +278,8 @@ class LinUCBBandit:
         self._is_fitted = True
         self.n_updates = len(decisions)
 
-    def save(self, filepath: Path) -> None:
-        """Save full bandit model using joblib."""
+    def serialize(self) -> bytes:
+        """Serialize the bandit model to bytes."""
         data = {
             "arms": self.arms,
             "alpha": self.alpha,
@@ -220,21 +288,25 @@ class LinUCBBandit:
             "is_fitted": self._is_fitted,
             "mab": self.mab if self._is_fitted else None,
         }
-        joblib.dump(data, filepath)
+        buffer = io.BytesIO()
+        joblib.dump(data, buffer)
+        buffer.seek(0)
+        return buffer.read()
 
     @classmethod
-    def load(cls, filepath: Path) -> "LinUCBBandit":
-        """Load full bandit model from joblib file."""
-        data = joblib.load(filepath)
+    def deserialize(cls, data: bytes) -> "LinUCBBandit":
+        """Deserialize a bandit model from bytes."""
+        buffer = io.BytesIO(data)
+        loaded_data = joblib.load(buffer)
         bandit = cls(
-            arms=data["arms"],
-            alpha=data["alpha"],
-            context_dim=data["context_dim"],
+            arms=loaded_data["arms"],
+            alpha=loaded_data["alpha"],
+            context_dim=loaded_data["context_dim"],
         )
-        bandit.n_updates = data.get("n_updates", 0)
-        bandit._is_fitted = data.get("is_fitted", False)
-        if data.get("mab") is not None:
-            bandit.mab = data["mab"]
+        bandit.n_updates = loaded_data.get("n_updates", 0)
+        bandit._is_fitted = loaded_data.get("is_fitted", False)
+        if loaded_data.get("mab") is not None:
+            bandit.mab = loaded_data["mab"]
         return bandit
 
     def to_dict(self) -> dict:
@@ -267,12 +339,18 @@ class HierarchicalBandit:
     - Global model learns from all users
     - Per-user models refine predictions for individual users
     - Blends predictions based on user's feedback history
+
+    Models are stored in PostgreSQL for persistence.
+    User models are cached in an LRU cache with configurable size.
+    Persistence is batched to reduce DB load.
     """
 
     def __init__(
         self,
         alpha: float = 1.0,
         min_user_updates: int = 10,
+        cache_size: int = DEFAULT_CACHE_SIZE,
+        flush_threshold: int = DEFAULT_FLUSH_THRESHOLD,
     ) -> None:
         """
         Initialize hierarchical bandit.
@@ -280,140 +358,135 @@ class HierarchicalBandit:
         Args:
             alpha: LinUCB exploration parameter.
             min_user_updates: Minimum updates before using per-user model.
+            cache_size: Maximum number of user models to keep in memory.
+            flush_threshold: Number of updates before flushing dirty models to DB.
         """
-        self.models_dir = Path("./bandit_models")
-        self.models_dir.mkdir(parents=True, exist_ok=True)
-
         self.alpha = alpha
         self.min_user_updates = min_user_updates
+        self.flush_threshold = flush_threshold
 
-        # Load or create global model
-        self.global_model = self._load_or_create_global()
+        # Global model (always in memory)
+        self.global_model = self._load_global_from_db()
 
-        # Per-user models (lazy loaded)
-        self.user_models: dict[str, LinUCBBandit] = {}
+        # LRU cache for user models (saves to DB on eviction)
+        self.user_models: LRUCache = LRUCache(
+            max_size=cache_size,
+            on_evict=self._on_user_evict,
+        )
 
-        # HF Hub sync configuration
-        self.hf_repo_id = os.getenv("HF_REPO_ID")
-        self.hf_api = HfApi(token=os.getenv("HF_TOKEN")) if self.hf_repo_id else None
-        self.update_counter = 0
-        self.upload_interval = int(os.getenv("HF_UPLOAD_INTERVAL", "50"))
+        # Dirty tracking for batched persistence
+        self._dirty_users: set[str] = set()
+        self._dirty_global: bool = False
+        self._update_count: int = 0
 
-    def _load_or_create_global(self) -> LinUCBBandit:
-        """Load global model from disk or create new one."""
-        # Try HF Hub first
-        if self.hf_repo_id:
-            try:
-                local_path = self.hf_api.hf_hub_download(
-                    repo_id=self.hf_repo_id,
-                    filename="bandit_models/global_bandit.joblib",
-                    repo_type="model",
-                    force_download=False,
-                )
-                bandit = LinUCBBandit.load(local_path)
-                print(
-                    f"   Downloaded global bandit from HF Hub with {bandit.n_updates} updates"
-                )
+        print(f"   Cache size: {cache_size}, flush threshold: {flush_threshold}")
+
+    def _save_to_db(self, model_id: str, bandit: LinUCBBandit) -> None:
+        """Save a bandit model to the database (base64 encoded)."""
+        import base64
+
+        model_data = base64.b64encode(bandit.serialize()).decode("utf-8")
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                INSERT INTO bandit_models (model_id, model_data, n_updates, updated_at)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (model_id) 
+                DO UPDATE SET model_data = EXCLUDED.model_data, 
+                              n_updates = EXCLUDED.n_updates, 
+                              updated_at = EXCLUDED.updated_at
+            """,
+                (model_id, model_data, bandit.n_updates, datetime.utcnow()),
+            )
+            conn.commit()
+        finally:
+            cursor.close()
+            conn.close()
+
+    def _load_from_db(self, model_id: str) -> LinUCBBandit | None:
+        """Load a bandit model from the database (base64 decoded)."""
+        import base64
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT model_data, n_updates 
+                FROM bandit_models 
+                WHERE model_id = %s
+            """,
+                (model_id,),
+            )
+            row = cursor.fetchone()
+            if row:
+                model_data_b64, n_updates = row
+                model_data = base64.b64decode(model_data_b64)
+                bandit = LinUCBBandit.deserialize(model_data)
+                bandit.n_updates = n_updates
                 return bandit
-            except Exception as e:
-                print(f"   Could not download global bandit from HF Hub: {e}")
+            return None
+        finally:
+            cursor.close()
+            conn.close()
 
-        # Try joblib first (full model)
-        joblib_path = self.models_dir / "global_bandit.joblib"
-        if joblib_path.exists():
-            try:
-                bandit = LinUCBBandit.load(joblib_path)
-                print(
-                    f"   Loaded global bandit with {bandit.n_updates} updates (full model)"
-                )
-                return bandit
-            except Exception as e:
-                print(f"   Could not load global bandit joblib: {e}")
-
-        # Fallback to JSON (metadata only)
-        json_path = self.models_dir / "global_bandit.json"
-        if json_path.exists():
-            try:
-                with open(json_path) as f:
-                    data = json.load(f)
-                print(
-                    f"   Loaded global bandit metadata ({data.get('n_updates', 0)} updates)"
-                )
-                return LinUCBBandit.from_dict(data)
-            except Exception as e:
-                print(f"   Could not load global bandit json: {e}")
-
+    def _load_global_from_db(self) -> LinUCBBandit:
+        """Load global model from DB or create new one."""
+        bandit = self._load_from_db("global")
+        if bandit:
+            print(f"   Loaded global bandit from DB with {bandit.n_updates} updates")
+            return bandit
+        print("   Creating new global bandit")
         return LinUCBBandit(alpha=self.alpha)
 
-    def _upload_to_hub(self, filepath: Path) -> None:
-        """Upload model file to HF Hub if configured."""
-        if not self.hf_api or not self.hf_repo_id:
-            return
+    def _load_user_from_db(self, user_id: str) -> LinUCBBandit | None:
+        """Load user model from DB."""
+        return self._load_from_db(f"user_{user_id}")
 
+    def _on_user_evict(self, user_id: str, model: LinUCBBandit) -> None:
+        """
+        Called when a user model is evicted from LRU cache.
+
+        Saves the model to DB before eviction to preserve learned state.
+
+        Args:
+            user_id: User identifier.
+            model: The LinUCBBandit being evicted.
+        """
         try:
-            self.hf_api.upload_file(
-                path_or_fileobj=str(filepath),
-                path_in_repo=str(filepath.relative_to(self.models_dir)),
-                repo_id=self.hf_repo_id,
-                repo_type="model",
-            )
-            print(f"   Uploaded {filepath.name} to HF Hub")
+            self._save_to_db(f"user_{user_id}", model)
+            # Remove from dirty set since it's now persisted
+            self._dirty_users.discard(user_id)
         except Exception as e:
-            print(f"   HF upload failed for {filepath.name}: {e}")
-
-    def _maybe_upload(self, filepath: Path) -> None:
-        """Upload to HF Hub periodically based on update counter."""
-        if not self.hf_api or not self.hf_repo_id:
-            return
-
-        self.update_counter += 1
-        if self.update_counter >= self.upload_interval:
-            self._upload_to_hub(filepath)
-            self.update_counter = 0
-
-    def _save_global(self) -> None:
-        """Save global model to disk using joblib."""
-        joblib_path = self.models_dir / "global_bandit.joblib"
-        self.global_model.save(joblib_path)
-        self._maybe_upload(joblib_path)
-
-    def _load_user_model(self, user_id: str) -> LinUCBBandit | None:
-        """Load per-user model from disk."""
-        # Try joblib first
-        joblib_path = self.models_dir / f"user_{user_id}.joblib"
-        if joblib_path.exists():
-            try:
-                return LinUCBBandit.load(joblib_path)
-            except Exception:
-                pass
-
-        # Fallback to JSON
-        json_path = self.models_dir / f"user_{user_id}.json"
-        if json_path.exists():
-            try:
-                with open(json_path) as f:
-                    data = json.load(f)
-                return LinUCBBandit.from_dict(data)
-            except Exception:
-                pass
-        return None
-
-    def _save_user_model(self, user_id: str) -> None:
-        """Save per-user model to disk using joblib."""
-        if user_id in self.user_models:
-            joblib_path = self.models_dir / f"user_{user_id}.joblib"
-            self.user_models[user_id].save(joblib_path)
-            self._maybe_upload(joblib_path)
+            print(f"Error saving evicted user model {user_id}: {e}")
 
     def get_user_model(self, user_id: str) -> LinUCBBandit:
-        """Get or create per-user model."""
-        if user_id not in self.user_models:
-            loaded = self._load_user_model(user_id)
-            if loaded:
-                self.user_models[user_id] = loaded
-            else:
-                self.user_models[user_id] = LinUCBBandit(alpha=self.alpha)
-        return self.user_models[user_id]
+        """
+        Get or create per-user model (uses LRU cache).
+
+        Args:
+            user_id: User identifier.
+
+        Returns:
+            LinUCBBandit for this user.
+        """
+        # Check cache first
+        cached = self.user_models.get(user_id)
+        if cached is not None:
+            return cached
+
+        # Try load from DB
+        loaded = self._load_user_from_db(user_id)
+        if loaded:
+            self.user_models.set(user_id, loaded)
+            return loaded
+
+        # Create new
+        new_model = LinUCBBandit(alpha=self.alpha)
+        self.user_models.set(user_id, new_model)
+        return new_model
 
     def select(
         self,
@@ -473,6 +546,9 @@ class HierarchicalBandit:
         """
         Update both global and per-user models with reward.
 
+        Uses batched persistence to reduce DB load. Models are marked dirty
+        and flushed to DB every flush_threshold updates.
+
         Args:
             user_id: User identifier.
             context: Context feature vector.
@@ -482,7 +558,7 @@ class HierarchicalBandit:
         # Update global model
         try:
             self.global_model.update(context, candidate, reward)
-            self._save_global()
+            self._dirty_global = True
         except Exception as e:
             print(f"Global model update error: {e}")
 
@@ -490,9 +566,41 @@ class HierarchicalBandit:
         try:
             user_model = self.get_user_model(user_id)
             user_model.update(context, candidate, reward)
-            self._save_user_model(user_id)
+            self._dirty_users.add(user_id)
         except Exception as e:
             print(f"User model update error: {e}")
+
+        # Increment counter and maybe flush
+        self._update_count += 1
+        if self._update_count >= self.flush_threshold:
+            self._flush_dirty()
+
+    def _flush_dirty(self) -> None:
+        """
+        Persist all dirty models to DB.
+
+        Called automatically every flush_threshold updates,
+        on LRU eviction, and on shutdown.
+        """
+        # Flush global if dirty
+        if self._dirty_global:
+            try:
+                self._save_to_db("global", self.global_model)
+                self._dirty_global = False
+            except Exception as e:
+                print(f"Error saving global model: {e}")
+
+        # Flush dirty users
+        for user_id in list(self._dirty_users):
+            cached = self.user_models.get(user_id)
+            if cached is not None:
+                try:
+                    self._save_to_db(f"user_{user_id}", cached)
+                    self._dirty_users.discard(user_id)
+                except Exception as e:
+                    print(f"Error saving user {user_id} model: {e}")
+
+        self._update_count = 0
 
     def warm_start_user(
         self,
@@ -533,18 +641,30 @@ class HierarchicalBandit:
         if decisions:
             contexts_array = np.array(contexts)
             user_model.warm_start(decisions, rewards, contexts_array)
-            self._save_user_model(user_id)
+            # Warm start is important, save immediately
+            self._save_to_db(f"user_{user_id}", user_model)
+            self._dirty_users.discard(user_id)  # Just saved, not dirty
 
     def close(self) -> None:
-        """Save all models and clean up."""
-        self._save_global()
-        for user_id in self.user_models:
-            self._save_user_model(user_id)
-        # Final upload of global model on shutdown
-        if self.hf_api and self.hf_repo_id:
-            joblib_path = self.models_dir / "global_bandit.joblib"
-            if joblib_path.exists():
-                self._upload_to_hub(joblib_path)
+        """
+        Save all models and clean up.
+
+        Flushes all dirty models to DB and saves any remaining cached models.
+        Should be called on server shutdown.
+        """
+        # First, flush all dirty models
+        self._flush_dirty()
+
+        # Then save any remaining cached models (safety net)
+        for user_id, model in self.user_models.items():
+            try:
+                self._save_to_db(f"user_{user_id}", model)
+            except Exception as e:
+                print(f"Error saving user {user_id} on close: {e}")
+
+        # Clear dirty tracking
+        self._dirty_users.clear()
+        self._dirty_global = False
 
 
 def build_context_features(
@@ -803,33 +923,24 @@ def nostalgia_score(
         # User defined a specific period: Center Gaussian on the middle of that period
         start, end = target_period
         mid_year = (start + end) / 2
-        # Calculate age user WOULD be at that time (relative to birth year doesn't matter as much as distance from target)
-        # Actually, simpler: just measure distance from release_year to mid_year
-        # We can reuse age_nostalgia logic but re-parameterized
-
         # Distance from target center
         dist = abs(release_year - mid_year)
 
         # Width should cover the range. Range is end - start. Sigma approx range/2
-        # But let's keep it tight.
         width = max(5.0, (end - start) / 2.0)
 
         # Gaussian score
         personal = math.exp(-(dist**2) / (2 * width**2))
 
-        # Cultural boost is less relevant here because they EXPLICITLY asked for this time
-        # so we trust the period match more.
+        # Cultural boost is less relevant here
         cultural = 0.0
     else:
         # Default: Use Reminiscence Bump (Age 13)
         age_at_release = release_year - birth_year
         personal = age_nostalgia(age_at_release)
-        # Cultural nostalgia (only for pre-birth content)
-        cultural = 0.0  # Default logic moved below
+        cultural = 0.0
 
         # Cultural boost for pre-birth content if NOT using target period
-        # (inherited memory logic)
-        # Calculate pop score first
         if use_linear:
             pop_score = min(1.0, rating_count / max_count) if max_count > 0 else 0.0
         else:

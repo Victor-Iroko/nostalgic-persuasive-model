@@ -1,6 +1,6 @@
 import { pgTable, text, integer, real, jsonb, timestamp, index } from 'drizzle-orm/pg-core'
 
-// Songs table - 100K records from Spotify 550K dataset
+// Songs table - from Spotify 550K dataset
 export const songs = pgTable(
   'songs',
   {

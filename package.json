@@ -14,7 +14,7 @@
     "db:migrate": "dotenv -e .env -- drizzle-kit migrate",
     "db:seed": "bun run ./server/database/seed.ts",
     "db:studio": "dotenv -e .env -- drizzle-kit studio",
-    "db:start": "docker compose up -d postgres",
+    "db:start": "docker compose up -d cockroach",
     "db:stop": "docker compose stop",
     "db:down": "docker compose down",
     "db:destroy": "docker compose down -v",

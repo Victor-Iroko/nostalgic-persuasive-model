@@ -263,57 +263,24 @@ class SongRecommender:
         cursor = conn.cursor()
 
         try:
-            # Get the query embedding once
-            cursor.execute(
-                "SELECT embedding FROM song_vectors WHERE spotify_id = %s",
-                (spotify_id,),
-            )
-            row = cursor.fetchone()
-            if not row:
-                return pd.DataFrame()
-
-            query_embedding = row[0]
-            if isinstance(query_embedding, str):
-                embedding_str = query_embedding
-            else:
-                emb_list = list(query_embedding)
-                embedding_str = "[" + ",".join(str(x) for x in emb_list) + "]"
-
             # Query similar songs using pgvector with duplicate filtering
-            # Two-step approach: first vector search (uses HNSW index), then dedup
             cursor.execute(
                 """
-                WITH vector_results AS (
-                    SELECT spotify_id, embedding <=> %s::vector as distance
-                    FROM song_vectors
-                    WHERE spotify_id != %s
-                    ORDER BY embedding <=> %s::vector
-                    LIMIT %s
-                ),
-                ranked_songs AS (
-                    SELECT 
-                        s.id, s.name, s.artists, s.genre, s.year,
-                        1 - (vr.distance) as similarity,
-                        ROW_NUMBER() OVER (
-                            PARTITION BY LOWER(SPLIT_PART(s.name, ' - ', 1))
-                            ORDER BY vr.distance
-                        ) as rn
-                    FROM vector_results vr
-                    JOIN songs s ON vr.spotify_id = s.id
-                )
-                SELECT id, name, artists, genre, year, similarity
-                FROM ranked_songs
-                WHERE rn = 1
-                ORDER BY similarity DESC
+                SELECT id, name, artists, genre, year, similarity FROM (
+                    SELECT DISTINCT ON (LOWER(SPLIT_PART(s.name, ' - ', 1)))
+                           s.id, s.name, s.artists, s.genre, s.year,
+                           1 - (sv.embedding <=> (SELECT embedding FROM song_vectors WHERE spotify_id = %s)) as similarity,
+                           sv.embedding <=> (SELECT embedding FROM song_vectors WHERE spotify_id = %s) as distance
+                    FROM song_vectors sv
+                    JOIN songs s ON sv.spotify_id = s.id
+                    WHERE sv.spotify_id != %s
+                    ORDER BY LOWER(SPLIT_PART(s.name, ' - ', 1)),
+                             sv.embedding <=> (SELECT embedding FROM song_vectors WHERE spotify_id = %s)
+                ) sub
+                ORDER BY distance
                 LIMIT %s;
             """,
-                (
-                    embedding_str,
-                    spotify_id,
-                    embedding_str,
-                    n_recommendations * 50,
-                    n_recommendations,
-                ),
+                (spotify_id, spotify_id, spotify_id, spotify_id, n_recommendations),
             )
 
             rows = cursor.fetchall()
@@ -479,38 +446,25 @@ class SongRecommender:
 
             cursor.execute(
                 f"""
-                -- Step 1: Vector search on song_vectors (uses HNSW index - ~500 rows)
-                -- Step 2: Join with songs and apply filters (now on small result set)
-                -- Step 3: Deduplicate (now on small result set)
-                WITH vector_results AS (
-                    SELECT spotify_id, embedding <=> %s::vector as distance
-                    FROM song_vectors
-                    ORDER BY embedding <=> %s::vector
-                    LIMIT %s
-                ),
-                ranked_songs AS (
-                    SELECT 
-                        s.id, s.name, s.artists, s.genre, s.year, s.popularity,
-                        1 - (vr.distance) as similarity,
-                        ROW_NUMBER() OVER (
-                            PARTITION BY LOWER(SPLIT_PART(s.name, ' - ', 1))
-                            ORDER BY vr.distance
-                        ) as rn
-                    FROM vector_results vr
-                    JOIN songs s ON vr.spotify_id = s.id
-                    WHERE vr.spotify_id NOT IN ({placeholders_str})
+                SELECT id, name, artists, genre, year, popularity, similarity FROM (
+                    SELECT DISTINCT ON (LOWER(SPLIT_PART(s.name, ' - ', 1)))
+                           s.id, s.name, s.artists, s.genre, s.year, s.popularity,
+                           1 - (sv.embedding <=> %s::vector) as similarity,
+                           sv.embedding <=> %s::vector as distance
+                    FROM song_vectors sv
+                    JOIN songs s ON sv.spotify_id = s.id
+                    WHERE sv.spotify_id NOT IN ({placeholders_str})
                       AND s.year IS NOT NULL
                       AND s.year <= %s
-                )
-                SELECT id, name, artists, genre, year, popularity, similarity
-                FROM ranked_songs
-                WHERE rn = 1
-                ORDER BY similarity DESC
+                    ORDER BY LOWER(SPLIT_PART(s.name, ' - ', 1)),
+                             sv.embedding <=> %s::vector
+                ) sub
+                ORDER BY distance
                 LIMIT %s;
             """,
-                [embedding_str, embedding_str, fetch_limit]
+                [embedding_str, embedding_str]
                 + liked_ids
-                + [max_year, n_recommendations],
+                + [max_year, embedding_str, fetch_limit],
             )
 
             rows = cursor.fetchall()

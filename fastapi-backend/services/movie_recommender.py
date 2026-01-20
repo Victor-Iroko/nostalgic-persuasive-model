@@ -64,8 +64,8 @@ class MovieRecommender:
         """
         self.database_url = database_url or DATABASE_URL
 
-        # Database connection (lazy initialization)
-        self._conn: Optional[psycopg2.extensions.connection] = None
+        # Database connection (no longer persistent)
+        # self._conn: Optional[psycopg2.extensions.connection] = None
 
         # Mappings
         self._user_id_map = {}
@@ -121,15 +121,12 @@ class MovieRecommender:
             raise
 
     def _get_connection(self) -> psycopg2.extensions.connection:
-        """Get or create database connection."""
-        if self._conn is None or self._conn.closed:
-            self._conn = psycopg2.connect(self.database_url)
-        return self._conn
+        """Get a new database connection."""
+        return psycopg2.connect(self.database_url)
 
     def close(self) -> None:
-        """Close the database connection."""
-        if self._conn and not self._conn.closed:
-            self._conn.close()
+        """Close the database connection (No-op as we use per-request connections)."""
+        pass
 
     def _build_old_movie_cache(self, min_years_old: int = 10) -> dict:
         """
@@ -144,43 +141,46 @@ class MovieRecommender:
         max_year = datetime.datetime.now().year - min_years_old
 
         conn = self._get_connection()
-        cursor = conn.cursor()
+        try:
+            cursor = conn.cursor()
 
-        cursor.execute(
-            """
-            SELECT id, title, year, genres, rating_count
-            FROM movies
-            WHERE year IS NOT NULL AND year <= %s;
-        """,
-            (max_year,),
-        )
+            cursor.execute(
+                """
+                SELECT id, title, year, genres, rating_count
+                FROM movies
+                WHERE year IS NOT NULL AND year <= %s;
+            """,
+                (max_year,),
+            )
 
-        rows = cursor.fetchall()
-        cursor.close()
+            rows = cursor.fetchall()
+            cursor.close()
 
-        # Build cache with only movies that exist in our model
-        internal_ids = []
-        movie_ids = []
-        metadata = {}  # movie_id -> (title, year, genres, rating_count)
+            # Build cache with only movies that exist in our model
+            internal_ids = []
+            movie_ids = []
+            metadata = {}  # movie_id -> (title, year, genres, rating_count)
 
-        for row in rows:
-            movie_id = row[0]
-            if movie_id in self._item_id_map:
-                internal_id = self._item_id_map[movie_id]
-                internal_ids.append(internal_id)
-                movie_ids.append(movie_id)
-                metadata[movie_id] = {
-                    "title": row[1],
-                    "year": row[2],
-                    "genres": row[3],
-                    "rating_count": row[4] or 0,
-                }
+            for row in rows:
+                movie_id = row[0]
+                if movie_id in self._item_id_map:
+                    internal_id = self._item_id_map[movie_id]
+                    internal_ids.append(internal_id)
+                    movie_ids.append(movie_id)
+                    metadata[movie_id] = {
+                        "title": row[1],
+                        "year": row[2],
+                        "genres": row[3],
+                        "rating_count": row[4] or 0,
+                    }
 
-        return {
-            "internal_ids": np.array(internal_ids, dtype=np.int32),
-            "movie_ids": np.array(movie_ids, dtype=np.int32),
-            "metadata": metadata,
-        }
+            return {
+                "internal_ids": np.array(internal_ids, dtype=np.int32),
+                "movie_ids": np.array(movie_ids, dtype=np.int32),
+                "metadata": metadata,
+            }
+        finally:
+            conn.close()
 
     def _format_genres(self, genres_json: list[str] | str | None) -> str:
         """
@@ -388,59 +388,62 @@ class MovieRecommender:
     def _get_popular_fallback(self, n: int, min_years_old: int = 10) -> pd.DataFrame:
         """Fallback for empty history."""
         conn = self._get_connection()
-        cursor = conn.cursor()
+        try:
+            cursor = conn.cursor()
 
-        # Calculate max year
-        import datetime
+            # Calculate max year
+            import datetime
 
-        current_year = datetime.date.today().year
-        max_year = current_year - min_years_old
+            current_year = datetime.date.today().year
+            max_year = current_year - min_years_old
 
-        # Get random popular movies that meet the criteria
-        # This is a bit inefficient (fetching all IDs then sampling), but safe for now
-        # Ideally we'd have a 'popular_old_movies' table or view
-        cursor.execute(
-            """
-            SELECT id FROM movies 
-            WHERE year <= %s 
-            ORDER BY rating_count DESC 
-            LIMIT 500
-        """,
-            (max_year,),
-        )
-
-        rows = cursor.fetchall()
-
-        if not rows:
-            cursor.close()
-            return pd.DataFrame()
-
-        # Sample from top 500
-        import random
-
-        all_ids = [r[0] for r in rows]
-        selected_ids = random.sample(all_ids, min(n, len(all_ids)))
-
-        placeholders = ",".join(["%s"] * len(selected_ids))
-        cursor.execute(
-            f"SELECT id, title, year, genres FROM movies WHERE id IN ({placeholders})",
-            selected_ids,
-        )
-        rows = cursor.fetchall()
-        cursor.close()
-
-        results = []
-        for row in rows:
-            results.append(
-                {
-                    "movieId": row[0],
-                    "title": row[1],
-                    "genres": self._format_genres(row[3]),
-                    "decade": self._calculate_decade(row[2]),
-                    "score": 0.0,
-                }
+            # Get random popular movies that meet the criteria
+            # This is a bit inefficient (fetching all IDs then sampling), but safe for now
+            # Ideally we'd have a 'popular_old_movies' table or view
+            cursor.execute(
+                """
+                SELECT id FROM movies 
+                WHERE year <= %s 
+                ORDER BY rating_count DESC 
+                LIMIT 500
+            """,
+                (max_year,),
             )
-        return pd.DataFrame(results)
+
+            rows = cursor.fetchall()
+
+            if not rows:
+                cursor.close()
+                return pd.DataFrame()
+
+            # Sample from top 500
+            import random
+
+            all_ids = [r[0] for r in rows]
+            selected_ids = random.sample(all_ids, min(n, len(all_ids)))
+
+            placeholders = ",".join(["%s"] * len(selected_ids))
+            cursor.execute(
+                f"SELECT id, title, year, genres FROM movies WHERE id IN ({placeholders})",
+                selected_ids,
+            )
+            rows = cursor.fetchall()
+            cursor.close()
+
+            results = []
+            for row in rows:
+                results.append(
+                    {
+                        "movieId": row[0],
+                        "title": row[1],
+                        "genres": self._format_genres(row[3]),
+                        "decade": self._calculate_decade(row[2]),
+                        "score": 0.0,
+                    }
+                )
+            return pd.DataFrame(results)
+        finally:
+            conn.close()
 
     def get_random_recommendations(
         self, n: int = 10, min_years_old: int = 0
@@ -456,44 +459,47 @@ class MovieRecommender:
             DataFrame with random movies
         """
         conn = self._get_connection()
-        cursor = conn.cursor()
+        try:
+            cursor = conn.cursor()
 
-        # Calculate max year
-        import datetime
+            # Calculate max year
+            import datetime
 
-        current_year = datetime.date.today().year
-        max_year = current_year - min_years_old
+            current_year = datetime.date.today().year
+            max_year = current_year - min_years_old
 
-        cursor.execute(
-            """
-            SELECT id, title, year, genres, rating_count
-            FROM movies
-            WHERE year <= %s
-            ORDER BY RANDOM()
-            LIMIT %s;
-        """,
-            (max_year, n),
-        )
-
-        rows = cursor.fetchall()
-        cursor.close()
-
-        results = []
-        for row in rows:
-            results.append(
-                {
-                    "movieId": row[0],
-                    "title": row[1],
-                    "year": row[2],
-                    "genres": self._format_genres(row[3]),
-                    "rating_count": row[4] or 0,
-                    "decade": self._calculate_decade(row[2]),
-                    "score": 0.0,
-                    "strategy": "random",
-                }
+            cursor.execute(
+                """
+                SELECT id, title, year, genres, rating_count
+                FROM movies
+                WHERE year <= %s
+                ORDER BY RANDOM()
+                LIMIT %s;
+            """,
+                (max_year, n),
             )
 
-        return pd.DataFrame(results)
+            rows = cursor.fetchall()
+            cursor.close()
+
+            results = []
+            for row in rows:
+                results.append(
+                    {
+                        "movieId": row[0],
+                        "title": row[1],
+                        "year": row[2],
+                        "genres": self._format_genres(row[3]),
+                        "rating_count": row[4] or 0,
+                        "decade": self._calculate_decade(row[2]),
+                        "score": 0.0,
+                        "strategy": "random",
+                    }
+                )
+
+            return pd.DataFrame(results)
+        finally:
+            conn.close()
 
     def get_movie_info(self, movie_id: int) -> dict:
         """
@@ -506,30 +512,33 @@ class MovieRecommender:
             Dictionary with movie information
         """
         conn = self._get_connection()
-        cursor = conn.cursor()
+        try:
+            cursor = conn.cursor()
 
-        cursor.execute(
-            """
-            SELECT id, title, year, genres
-            FROM movies
-            WHERE id = %s;
-        """,
-            (movie_id,),
-        )
+            cursor.execute(
+                """
+                SELECT id, title, year, genres
+                FROM movies
+                WHERE id = %s;
+            """,
+                (movie_id,),
+            )
 
-        row = cursor.fetchone()
-        cursor.close()
+            row = cursor.fetchone()
+            cursor.close()
 
-        if row:
-            return {
-                "movieId": row[0],
-                "title": row[1],
-                "year": row[2],
-                "genres": self._format_genres(row[3]),
-                "decade": self._calculate_decade(row[2]),
-            }
+            if row:
+                return {
+                    "movieId": row[0],
+                    "title": row[1],
+                    "year": row[2],
+                    "genres": self._format_genres(row[3]),
+                    "decade": self._calculate_decade(row[2]),
+                }
 
-        return {"error": f"Movie {movie_id} not found"}
+            return {"error": f"Movie {movie_id} not found"}
+        finally:
+            conn.close()
 
     def search_movies(
         self, query: str, limit: int = 10, min_years_old: int = 0
@@ -546,40 +555,43 @@ class MovieRecommender:
             DataFrame with matching movies
         """
         conn = self._get_connection()
-        cursor = conn.cursor()
+        try:
+            cursor = conn.cursor()
 
-        # Calculate max year
-        import datetime
+            # Calculate max year
+            import datetime
 
-        current_year = datetime.date.today().year
-        max_year = current_year - min_years_old
+            current_year = datetime.date.today().year
+            max_year = current_year - min_years_old
 
-        cursor.execute(
-            """
-            SELECT id, title, year, genres
-            FROM movies
-            WHERE LOWER(title) LIKE %s
-            AND year <= %s
-            LIMIT %s;
-        """,
-            (f"%{query.lower()}%", max_year, limit),
-        )
-
-        rows = cursor.fetchall()
-        cursor.close()
-
-        results = []
-        for row in rows:
-            results.append(
-                {
-                    "movieId": row[0],
-                    "title": row[1],
-                    "genres": self._format_genres(row[3]),
-                    "decade": self._calculate_decade(row[2]),
-                }
+            cursor.execute(
+                """
+                SELECT id, title, year, genres
+                FROM movies
+                WHERE LOWER(title) LIKE %s
+                AND year <= %s
+                LIMIT %s;
+            """,
+                (f"%{query.lower()}%", max_year, limit),
             )
 
-        return pd.DataFrame(results)
+            rows = cursor.fetchall()
+            cursor.close()
+
+            results = []
+            for row in rows:
+                results.append(
+                    {
+                        "movieId": row[0],
+                        "title": row[1],
+                        "genres": self._format_genres(row[3]),
+                        "decade": self._calculate_decade(row[2]),
+                    }
+                )
+
+            return pd.DataFrame(results)
+        finally:
+            conn.close()
 
 
 # Example usage

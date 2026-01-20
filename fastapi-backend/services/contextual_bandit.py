@@ -10,11 +10,13 @@ contexts (stress level, emotion, time of day, etc.).
 
 import json
 import math
+import os
 from pathlib import Path
 from typing import Literal
 
 import joblib
 import numpy as np
+from huggingface_hub import HfApi
 from mabwiser.mab import MAB, LearningPolicy
 
 
@@ -291,8 +293,31 @@ class HierarchicalBandit:
         # Per-user models (lazy loaded)
         self.user_models: dict[str, LinUCBBandit] = {}
 
+        # HF Hub sync configuration
+        self.hf_repo_id = os.getenv("HF_REPO_ID")
+        self.hf_api = HfApi(token=os.getenv("HF_TOKEN")) if self.hf_repo_id else None
+        self.update_counter = 0
+        self.upload_interval = int(os.getenv("HF_UPLOAD_INTERVAL", "50"))
+
     def _load_or_create_global(self) -> LinUCBBandit:
         """Load global model from disk or create new one."""
+        # Try HF Hub first
+        if self.hf_repo_id:
+            try:
+                local_path = self.hf_api.hf_hub_download(
+                    repo_id=self.hf_repo_id,
+                    filename="bandit_models/global_bandit.joblib",
+                    repo_type="model",
+                    force_download=False,
+                )
+                bandit = LinUCBBandit.load(local_path)
+                print(
+                    f"   Downloaded global bandit from HF Hub with {bandit.n_updates} updates"
+                )
+                return bandit
+            except Exception as e:
+                print(f"   Could not download global bandit from HF Hub: {e}")
+
         # Try joblib first (full model)
         joblib_path = self.models_dir / "global_bandit.joblib"
         if joblib_path.exists():
@@ -320,10 +345,37 @@ class HierarchicalBandit:
 
         return LinUCBBandit(alpha=self.alpha)
 
+    def _upload_to_hub(self, filepath: Path) -> None:
+        """Upload model file to HF Hub if configured."""
+        if not self.hf_api or not self.hf_repo_id:
+            return
+
+        try:
+            self.hf_api.upload_file(
+                path_or_fileobj=str(filepath),
+                path_in_repo=str(filepath.relative_to(self.models_dir)),
+                repo_id=self.hf_repo_id,
+                repo_type="model",
+            )
+            print(f"   Uploaded {filepath.name} to HF Hub")
+        except Exception as e:
+            print(f"   HF upload failed for {filepath.name}: {e}")
+
+    def _maybe_upload(self, filepath: Path) -> None:
+        """Upload to HF Hub periodically based on update counter."""
+        if not self.hf_api or not self.hf_repo_id:
+            return
+
+        self.update_counter += 1
+        if self.update_counter >= self.upload_interval:
+            self._upload_to_hub(filepath)
+            self.update_counter = 0
+
     def _save_global(self) -> None:
         """Save global model to disk using joblib."""
         joblib_path = self.models_dir / "global_bandit.joblib"
         self.global_model.save(joblib_path)
+        self._maybe_upload(joblib_path)
 
     def _load_user_model(self, user_id: str) -> LinUCBBandit | None:
         """Load per-user model from disk."""
@@ -351,6 +403,7 @@ class HierarchicalBandit:
         if user_id in self.user_models:
             joblib_path = self.models_dir / f"user_{user_id}.joblib"
             self.user_models[user_id].save(joblib_path)
+            self._maybe_upload(joblib_path)
 
     def get_user_model(self, user_id: str) -> LinUCBBandit:
         """Get or create per-user model."""
@@ -487,6 +540,11 @@ class HierarchicalBandit:
         self._save_global()
         for user_id in self.user_models:
             self._save_user_model(user_id)
+        # Final upload of global model on shutdown
+        if self.hf_api and self.hf_repo_id:
+            joblib_path = self.models_dir / "global_bandit.joblib"
+            if joblib_path.exists():
+                self._upload_to_hub(joblib_path)
 
 
 def build_context_features(

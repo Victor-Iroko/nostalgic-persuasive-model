@@ -294,9 +294,17 @@ app.include_router(recommend_router)
 # =============================================================================
 
 if __name__ == "__main__":
+    import signal
+    import sys
     import uvicorn
 
-    # Get config from environment or use defaults
+    def shutdown_handler(signum, frame):
+        print(f"\n🛑 Received signal {signum}, initiating graceful shutdown...")
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, shutdown_handler)
+    signal.signal(signal.SIGINT, shutdown_handler)
+
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8000"))
     reload = os.getenv("RELOAD", "true").lower() == "true"
